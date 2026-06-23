@@ -165,14 +165,9 @@ The coerce solver keeps a track of removed atoms, coerced units, and search step
 With these interfaces, the search algorithm is roughly represented as:
 
 ```text
-action = Assert(Next)
-
 while true:
-    result = assert_solver.handle(action)
-
-    if propagation continues:
-        action = Assert(next_action)
-        continue
+    
+    propagate using assert solver
 
     if propagation finishes:
         probe.select(field, selected_node, selected_units)
