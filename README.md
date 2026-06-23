@@ -135,8 +135,6 @@ This version of GAC-3 does not reason directly in terms of variables, values, an
 
 ### Searching
 
-### Search
-
 The [coerce](/arc/src/coerce/solver.rs) solver is responsible for the search step of the algorithm.
 
 It wraps the propagation solver and uses it as an inner solver. Search is performed by repeatedly propagating, selecting a node, removing part of its remaining units, and reverting when a contradiction is reached.
