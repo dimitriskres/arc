@@ -1,0 +1,9 @@
+[package]
+name = "color"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+arc = { workspace = true }
+bitset = { workspace = true }
+rand = "0.10.1"

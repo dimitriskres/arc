@@ -1,0 +1,26 @@
+[package]
+name = "arc"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bitset = { workspace = true }
+fastdiv = "0.1.0"
+rand = "0.10.1"
+roaring = "0.11.3"
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = "fat"
+panic = "abort"
+debug = 0
+strip = "symbols"
+incremental = false
+
+[profile.vtune]
+inherits = "release"
+debug = 2
+strip = "none"
+lto = "off"
+panic = "unwind"

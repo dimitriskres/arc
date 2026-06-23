@@ -1,0 +1,19 @@
+[package]
+name = "chain"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+arc = { workspace = true }
+bitset = { workspace = true }
+rustc-hash = "2.1.2"
+csv = "1.4.0"
+paste = { version = "1.0.15" }
+
+[[bin]]
+name = "chain-bench"
+path = "bin/bench.rs"
+
+[[bin]]
+name = "chain-uarch"
+path = "bin/uarch.rs"

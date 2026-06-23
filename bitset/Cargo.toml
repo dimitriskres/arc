@@ -1,0 +1,10 @@
+[package]
+name = "bitset"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+roaring = "0.11.3"
+
+[profile.release]
+debug = 2

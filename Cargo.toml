@@ -1,0 +1,22 @@
+[workspace]
+members = [
+    "bitset",
+    "arc",
+    "puzzles/chain",
+    "puzzles/latin",
+    # "puzzles/color"
+]
+resolver = "2"
+
+[workspace.dependencies]
+arc = { path = "arc" }
+bitset = { path = "bitset" }
+
+[profile.release]
+opt-level = 3
+codegen-units = 1
+lto = "fat"
+panic = "abort"
+debug = 0
+strip = "symbols"
+incremental = false

@@ -1,0 +1,42 @@
+# Rust build output
+/target/
+
+# Cargo lock
+# Keep Cargo.lock for applications/binaries.
+# Ignore it for libraries if you want consumers to resolve dependencies themselves.
+# Cargo.lock
+
+# Rustfmt backup files
+**/*.rs.bk
+
+# Generated docs
+/doc/
+
+# Benchmark/profiling outputs
+**/benchmarks/
+**/criterion/
+**/flamegraph.svg
+**/perf.data
+**/perf.data.old
+
+# IDE/editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Environment/config secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
