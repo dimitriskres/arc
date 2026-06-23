@@ -84,7 +84,7 @@ Many structures can be built that satisfy this interface. 5 have been built:
 - `CacheV4` replaces the boolean vector of `CacheV3` with a bit-set.
 - `CacheV5` stores both atom-to-facts edges and active facts in bit-sets. This requires the model to encode the possible edges of each atom.
 
-The `audit` does the actual constraint work. It interprets a fact as a unit of work and decides which atoms support it and/or which should be removed:
+The [audit](/arc/src/assert/audit.rs) does the actual constraint work. It interprets a fact as a unit of work and decides which atoms support it and/or which should be removed:
 
 It exposes the following methods necessary for propagation:
 
