@@ -1,7 +1,7 @@
 
 const SIZE: arc::codec::Scalar = 600;
 
-// scalar F5F Q3M C4F P3
+// scalar F5F Q3M C3  P3
 
 type Audit<Model> = chain::method::binary::audit::Audit<Model>;
 
@@ -9,7 +9,7 @@ type Field<Model> = arc::assert::field::FieldV5<Model, bitset::flat::BitSet>;
 
 type Queue<Model> = arc::assert::queue::QueueV3<Model, bitset::meta::BitSet>;
 
-type Cache<Model> = arc::assert::cache::CacheV4<Model, bitset::flat::BitSet>;
+type Cache<Model> = arc::assert::cache::CacheV3<Model>;
 
 type Probe<Model> = arc::coerce::probe::ProbeV3<Model>;
 

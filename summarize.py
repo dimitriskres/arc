@@ -3,7 +3,7 @@ import decimal
 import collections
 import statistics
 
-INPUT_PATH = './puzzles/latin/zinc-bench.csv'
+INPUT_PATH = './puzzles/chain/zinc-bench.csv'
 
 buckets: dict[str, list[decimal.Decimal]] = collections.defaultdict(list)
 

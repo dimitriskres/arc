@@ -232,5 +232,5 @@ All aliases can be found in the `resolve_*` macros [here](/arc/src/lib.rs).
 All benchmarks use the [coerce solver](/arc/src/coerce/solver.rs) which is capable of searching and backtracking, although this functionality is not always necessary. The methodology can be found in [analyze.rs](/arc/analyze.rs).
 
 Available benchmarks:
+- [chain](/puzzles/chain)
 - [latin](/puzzles/latin)
-

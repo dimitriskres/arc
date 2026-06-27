@@ -8,7 +8,7 @@ The `object` model encodes the `node` and `unit` into an `atom` object and it en
 
 Mean reported in milliseconds. Standard deviation reported in % of the mean. 
 
-The fastest benchmark is with `scalar F5F Q1  C4F P3 ` at `61`. The fastest benchmark while using the `object` model is with `object F2X Q1  C1X P3 ` at `222` with non-secure hashing and `object F3R Q1  C1X P3  ` at `241` with secure hashing.
+The fastest benchmark is with `scalar F5F Q1  C4F P3 ` at `61`. The fastest benchmark while using the `object` model is with `object F2X Q1  C1X P3 ` at `222` with non-secure hashing and `object F3R Q1  C1X P3 ` at `241` with secure hashing.
 
 Statistics from [kern-bench.csv](/puzzles/latin/kern-bench.csv):
 
@@ -596,7 +596,7 @@ Statistics from [kern-bench.csv](/puzzles/latin/kern-bench.csv):
 | `scalar F4  Q3F C2X P3 ` | 19892 | 0.4  |
 | `scalar F4  Q3F C2R P3 ` | 20180 | 0.6  |
 
-Reference through `minizinc` using [bench.py](/bench.py) on [model-eq.mzn](/arc/puzzles/latin/zinc/model-eq.mzn) with `n = 30`. Statistics from [zinc-bench.csv](/puzzles/latin/zinc-bench.csv):
+Reference through `minizinc` using [bench.py](/bench.py) on [model.mzn](/arc/puzzles/latin/zinc/model.mzn) with `n = 30`. Statistics from [zinc-bench.csv](/puzzles/latin/zinc-bench.csv):
 
 | name     | mean | stdv |
 |----------|------|------|
@@ -608,42 +608,7 @@ Reference through `minizinc` using [bench.py](/bench.py) on [model-eq.mzn](/arc/
 
 The kernel exhibited better instruction efficiency, lower back-end and memory pressure, better cache locality, and fewer serializing-operation stalls. It performs more useful CPU work than memory waiting.
 
-### Gecode
-
-`cmd /c start "" /affinity FFF cmd /c vtune -collect uarch-exploration -result-dir ./benchmarks/gecode -- powershell -NoProfile -ExecutionPolicy Bypass -File zinc-uarch.ps1`
-
-```
-Elapsed Time:                         13.260s
-Clockticks:                   65,397,198,000
-Instructions Retired:        151,664,058,000
-CPI Rate:                              0.431
-MUX Reliability:                       0.983
-
-Retiring:                              37.7%
-
-Front-End Bound:                       24.1%
-  Front-End Latency:                   10.8%
-  Front-End Bandwidth:                 13.3%
-
-Bad Speculation:                        3.6%
-  Branch Mispredict:                    2.6%
-
-Back-End Bound:                        34.6%
-  Memory Bound:                        21.4%
-    L1 Bound:                           8.1%
-    L2 Bound:                           1.2%
-    L3 Bound:                           2.2%
-    DRAM Bound:                         8.6%
-    Store Bound:                        3.9%
-  Core Bound:                          13.2%
-    Divider:                            0.3%
-    Serializing Operations:            11.2%
-    Port Utilization:                  19.2%
-```
-
 ### Kernel
-
-`cmd /c start "" /affinity FFF cmd /c vtune -collect uarch-exploration -result-dir .\benchmarks\kernel -- cargo run --release --bin latin-uarch`
 
 ```
 Elapsed Time:                          1.305s
@@ -672,4 +637,35 @@ Back-End Bound:                        13.7%
     Divider:                            0.0%
     Serializing Operations:             3.4%
     Port Utilization:                  18.8%
+```
+
+### Gecode
+
+```
+Elapsed Time:                         11.268s
+Clockticks:                   56,354,726,000
+Instructions Retired:        123,995,072,000
+CPI Rate:                              0.454
+MUX Reliability:                       0.919
+
+Retiring:                              34.7%
+
+Front-End Bound:                       23.3%
+  Front-End Latency:                    8.5%
+  Front-End Bandwidth:                 14.8%
+
+Bad Speculation:                        2.9%
+  Branch Mispredict:                    2.2%
+
+Back-End Bound:                        39.1%
+  Memory Bound:                        22.8%
+    L1 Bound:                          13.0%
+    L2 Bound:                           2.3%
+    L3 Bound:                           2.4%
+    DRAM Bound:                         7.6%
+    Store Bound:                        4.6%
+  Core Bound:                          16.2%
+    Divider:                            0.1%
+    Serializing Operations:            11.5%
+    Port Utilization:                  19.5%
 ```

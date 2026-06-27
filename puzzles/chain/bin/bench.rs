@@ -54,7 +54,7 @@ fn main()
     let model = & chain::method::binary::model::ScalarModel::new(node_count, unit_count);
     
     arc::bench_cases!(
-        "object",
+        "scalar",
         Audit<_>,
         handle, model,
         MINIMUM, PREPARE, TIMEOUT,

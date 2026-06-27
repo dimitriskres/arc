@@ -1,18 +1,18 @@
 import re
 import typing
 import subprocess
-import sys
 import csv
+import decimal
 
-MZN = './puzzles/latin/zinc/model-eq.mzn'
-DZN = './puzzles/latin/zinc/data.dzn'
+MZN = './puzzles/chain/zinc/model.mzn'
+DZN = './puzzles/chain/zinc/data.dzn'
 
 COUNT = 100
 
 SOLVERS = [
-    # 'Chuffed', 
+    'Chuffed', 
     'Gecode', 
-    # 'CP-SAT'
+    'CP-SAT'
 ]
 
 TIMEOUT = 60 * 10
@@ -31,8 +31,8 @@ def execute(solver: str, mzn: str, dzn: str) -> typing.Iterator[float]:
         match = PATTERN.search(output)
         if match is None:
             raise RuntimeError(f"solveTime not found in run {i}")
-        duration = float(match.group(1))
-        print(f"{i:02}: {duration:.4f}s")
+        duration = int(float(match.group(1)) * 1_000_000_000)
+        print(f"{solver} {i:02}: {duration:.4f} ns")
         yield duration
 
 def main():
