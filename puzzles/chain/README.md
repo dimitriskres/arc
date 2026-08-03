@@ -25,9 +25,9 @@ The fastest module combination using:
 
 ### Cross-Solver Benchmark
 
-Reference using `minizinc` with [model.mzn](zinc\model.mzn) from [solver-bench.csv](solver-bench.csv):
+Reference using `minizinc` with [model.mzn](zinc/model.mzn) from [solver-bench.csv](solver-bench.csv):
 
-![solver_bench_plot](media\solver-bench-plot.svg)
+![solver_bench_plot](media/solver-bench-plot.svg)
 
 | tick   | name      | v   |   st mean |   st stdv |   sv mean |   sv stdv |
 |:-------|:----------|:----|----------:|----------:|----------:|----------:|

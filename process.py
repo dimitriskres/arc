@@ -139,9 +139,9 @@ def run(command: list[str], capture: bool = False, stdout = None, stderr = None,
 
         return subprocess.CompletedProcess(command, process.returncode, output, errors)
 
-def get_relative_path(path: str) -> str:
+def get_url_path(path: str) -> str:
     
-    return os.path.relpath(path, start = BASE_PATH)
+    return os.path.relpath(path, start = BASE_PATH).replace('\\', '/')
 
 def get_rust_bin_name(name: str):
     
@@ -631,10 +631,10 @@ def main_display():
         fast_object_R_v = fast_object_R_v,
         fast_object_R_name = fast_object_R_name,
         fast_object_R_time = fast_object_R_time,
-        kernel_bench_csv_path = get_relative_path(kernel_bench_csv_path),
-        solver_bench_mzn_path = get_relative_path(ZINC_MZN_PATH),
-        solver_bench_csv_path = get_relative_path(solver_bench_csv_path),
-        solver_bench_svg_path = get_relative_path(solver_bench_svg_path),
+        kernel_bench_csv_path = get_url_path(kernel_bench_csv_path),
+        solver_bench_mzn_path = get_url_path(ZINC_MZN_PATH),
+        solver_bench_csv_path = get_url_path(solver_bench_csv_path),
+        solver_bench_svg_path = get_url_path(solver_bench_svg_path),
         solver_bench_text = solver_bench_text,
         kernel_bench_text = kernel_bench_text,
         tune_display_text = tune_display_text
