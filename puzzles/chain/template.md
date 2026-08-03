@@ -12,7 +12,7 @@ Under the **scalar** model, that same triple is instead packed **row-major** int
 
 The field, queue, and cache components are each versioned independently. Earlier versions back their store with a **hash map**, either Rust's default DoS-resistant RandomState hasher (suffix `R`) or the faster, non-cryptographic FxHash (suffix `X`); later versions drop hashing entirely in favour of direct-indexed arrays or **bitsets**, since atoms and facts are already dense integers under the scalar encoding.
 
-## Analysis & Benchmarks
+## Analysis
 
 A `tick` controls the scale of the puzzle. The chain size is `N = 100 * tick`. For cross-module benchmarking, `N = 400` is used.
 
