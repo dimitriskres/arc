@@ -12,7 +12,7 @@ Under the **scalar** model, the same information is instead packed **row-major**
 
 The field, queue, and cache components independently move from **hash map**-backed stores in early versions, either the secure RandomState hasher (suffix `R`) or the faster, non-cryptographic FxHash (suffix `X`), to hash-free **bitset**- or array-indexed stores in later versions, once the scalar encoding makes every key a small dense integer.
 
-## Analysis & Benchmarks
+## Analysis
 
 A `tick` controls the scale of the puzzle. The square is size `N = 10 + tick * 2`. For cross-module benchmarking, `N = 30` is used.
 
