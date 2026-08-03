@@ -1,729 +1,714 @@
-# chain Square
+# Monotonic Chain Puzzle
 
-30x30 chain square solved using smallest-remaining-domain selection and upper-half reduction.
+The puzzle asks for a strictly increasing sequence of length `N` drawn from the domain `1..N`, i.e. `x[1] < x[2] < ... < x[N]`. There is no branching structure to speak of, so runtime is almost entirely a function of how efficiently a solver can rule out inconsistent values through arc consistency as it searches for support along a linear chain of N positions.
 
-The `object` model encodes the `node` and `unit` into an `atom` object and it encodes this `atom` along with each `link` in a `fact` object. The `scalar` model encodes the `node` and `unit` into an `atom` scalar using a row-major format, and it encodes this `atom` along with each `link` into another `fact` scalar again using a row-major format. 
+## Description
 
-## Benchmark
+The puzzle is represented as `N` **nodes** of `N` **units** each: one node per chain position, one unit per candidate value `1..N`. The unit of propagation work is a **fact**, an assertion that unit `u` at node `n` needs to search either its **left** or **right** neighbouring node for support.
+
+Under the **object** model, a fact is an object nest: an **atom** (a node/unit pair) wrapped together with a **link** value recording whether the search direction is left or right, i.e. `Object<Object<Node, Unit>, Link>`. 
+
+Under the **scalar** model, that same triple is instead packed **row-major** into a single integer: `atom = node * unit_count + unit`, and `fact = atom * link_count + link`, so a fact collapses to one flat scalar rather than a chain of struct fields..
+
+The field, queue, and cache components are each versioned independently. Earlier versions back their store with a **hash map**, either Rust's default DoS-resistant RandomState hasher (suffix `R`) or the faster, non-cryptographic FxHash (suffix `X`); later versions drop hashing entirely in favour of direct-indexed arrays or **bitsets**, since atoms and facts are already dense integers under the scalar encoding.
+
+## Analysis & Benchmarks
+
+A `tick` controls the scale of the puzzle. The chain size is `N = 100 * tick`. For cross-module benchmarking, `N = 400` is used.
 
 Mean reported in milliseconds. Standard deviation reported in % of the mean. 
 
-The fastest benchmark is with `scalar F5F Q3M C3  P3 ` at `162`. The fastest benchmark while using the `object` model is with `object F3X Q1  C1X P3 ` at `220` with non-secure hashing and `object F3R Q1  C1R P3 ` at `321` with secure hashing.
+The fastest module combination using:
+- `scalar` is `V1` `F4  Q3M C4F` with **35** mean.
+- `object` with non-secure hashing is `V0` `F3X Q1  C1X` with **54** mean.
+- `object` with secure hashing is `V0` `F3X Q1  C1R` with **79** mean.
 
-Statistics from [kern-bench.csv](/puzzles/chain/kern-bench.csv):
+### Cross-Solver Benchmark
 
-| name                     | mean  | stdv |
-|--------------------------|-------|------|
-| `scalar F5F Q3M C3  P3 ` | 162   | 1.2  |
-| `scalar F3X Q1  C4F P3 ` | 164   | 1.1  |
-| `scalar F5F Q3M C4F P3 ` | 164   | 1.1  |
-| `scalar F3X Q1  C3  P3 ` | 164   | 1.1  |
-| `scalar F5F Q3M C4M P3 ` | 165   | 1.9  |
-| `scalar F2X Q4F C4F P3 ` | 166   | 1.1  |
-| `scalar F2X Q4F C3  P3 ` | 166   | 1.3  |
-| `scalar F3X Q4F C3  P3 ` | 167   | 1.4  |
-| `scalar F3X Q4F C4F P3 ` | 167   | 1.5  |
-| `scalar F3X Q1  C4M P3 ` | 168   | 2.6  |
-| `scalar F2X Q4F C4M P3 ` | 168   | 1.5  |
-| `scalar F2X Q1  C3  P3 ` | 168   | 1.9  |
-| `scalar F3X Q4F C4M P3 ` | 168   | 1.3  |
-| `scalar F2X Q1  C4F P3 ` | 168   | 1.9  |
-| `scalar F2X Q1  C4M P3 ` | 169   | 1.4  |
-| `scalar F2X Q4M C3  P3 ` | 169   | 1.3  |
-| `scalar F2X Q4M C4F P3 ` | 170   | 1.4  |
-| `scalar F3X Q4M C3  P3 ` | 171   | 1.8  |
-| `scalar F4  Q3M C4F P3 ` | 171   | 2.1  |
-| `scalar F3X Q4M C4F P3 ` | 171   | 1.9  |
-| `scalar F4  Q3M C3  P3 ` | 172   | 2.0  |
-| `scalar F2X Q4M C4M P3 ` | 172   | 2.3  |
-| `scalar F3X Q4M C4M P3 ` | 173   | 1.6  |
-| `scalar F4  Q3M C4M P3 ` | 177   | 5.0  |
-| `scalar F5F Q3M C2R P3 ` | 180   | 1.2  |
-| `scalar F5F Q3M C1X P3 ` | 188   | 1.0  |
-| `scalar F5F Q3M C2X P3 ` | 188   | 1.0  |
-| `scalar F5F Q3M C5F P3 ` | 192   | 1.0  |
-| `scalar F3X Q1  C1X P3 ` | 194   | 1.4  |
-| `scalar F3X Q1  C2X P3 ` | 195   | 0.9  |
-| `scalar F3X Q1  C5F P3 ` | 197   | 2.1  |
-| `scalar F3X Q4F C2X P3 ` | 197   | 1.2  |
-| `scalar F2X Q4F C1X P3 ` | 198   | 1.3  |
-| `scalar F3X Q4F C5F P3 ` | 198   | 1.4  |
-| `scalar F2X Q4F C2X P3 ` | 198   | 1.9  |
-| `scalar F2X Q1  C1X P3 ` | 199   | 1.6  |
-| `scalar F4  Q3M C2R P3 ` | 199   | 2.6  |
-| `scalar F3X Q4F C1X P3 ` | 199   | 1.5  |
-| `scalar F2X Q4F C5F P3 ` | 199   | 1.6  |
-| `scalar F2X Q4M C5F P3 ` | 200   | 1.4  |
-| `scalar F2X Q1  C2X P3 ` | 200   | 2.3  |
-| `scalar F4  Q3M C5F P3 ` | 201   | 2.0  |
-| `scalar F3X Q2X C3  P3 ` | 201   | 4.9  |
-| `scalar F2X Q4M C2X P3 ` | 201   | 1.4  |
-| `scalar F5F Q3M C5M P3 ` | 201   | 0.7  |
-| `scalar F3X Q4M C1X P3 ` | 202   | 1.7  |
-| `scalar F3X Q4M C5F P3 ` | 202   | 2.0  |
-| `scalar F3X Q4M C2X P3 ` | 202   | 1.6  |
-| `scalar F5F Q3M C1R P3 ` | 202   | 1.1  |
-| `scalar F3X Q2X C4M P3 ` | 202   | 2.3  |
-| `scalar F2X Q4M C1X P3 ` | 203   | 1.7  |
-| `scalar F2X Q1  C5F P3 ` | 205   | 1.9  |
-| `scalar F3X Q1  C5M P3 ` | 205   | 1.3  |
-| `scalar F2X Q2X C3  P3 ` | 207   | 4.2  |
-| `scalar F2X Q4F C5M P3 ` | 209   | 1.2  |
-| `scalar F4  Q3M C1X P3 ` | 210   | 5.3  |
-| `scalar F3X Q4F C5M P3 ` | 210   | 1.5  |
-| `scalar F3X Q2X C4F P3 ` | 211   | 5.9  |
-| `scalar F4  Q3M C5M P3 ` | 211   | 2.0  |
-| `scalar F2X Q4M C5M P3 ` | 211   | 1.0  |
-| `scalar F3X Q4M C5M P3 ` | 212   | 1.1  |
-| `scalar F4  Q3M C2X P3 ` | 212   | 5.7  |
-| `scalar F2X Q2X C4F P3 ` | 213   | 7.0  |
-| `scalar F2X Q2X C4M P3 ` | 215   | 4.1  |
-| `scalar F2X Q1  C5M P3 ` | 215   | 1.3  |
-| `scalar F2X Q4F C2R P3 ` | 218   | 1.4  |
-| `scalar F3X Q4F C2R P3 ` | 218   | 1.3  |
-| `scalar F3X Q1  C2R P3 ` | 218   | 1.4  |
-| `object F3X Q1  C1X P3 ` | 220   | 0.9  |
-| `object F2X Q1  C1X P3 ` | 220   | 0.9  |
-| `scalar F2X Q4M C2R P3 ` | 221   | 1.0  |
-| `scalar F3X Q4M C2R P3 ` | 224   | 1.7  |
-| `scalar F3R Q1  C4F P3 ` | 227   | 0.8  |
-| `scalar F2X Q1  C2R P3 ` | 227   | 3.0  |
-| `scalar F3R Q1  C3  P3 ` | 227   | 0.9  |
-| `scalar F3R Q1  C4M P3 ` | 227   | 0.7  |
-| `scalar F3X Q2X C1X P3 ` | 231   | 1.7  |
-| `scalar F4  Q3M C1R P3 ` | 232   | 6.5  |
-| `scalar F3X Q2X C5F P3 ` | 234   | 3.2  |
-| `scalar F3X Q2R C3  P3 ` | 234   | 1.7  |
-| `scalar F3R Q4F C3  P3 ` | 235   | 1.2  |
-| `scalar F3R Q4F C4F P3 ` | 235   | 0.9  |
-| `scalar F3X Q2X C2X P3 ` | 237   | 4.7  |
-| `scalar F3R Q4F C4M P3 ` | 237   | 1.2  |
-| `scalar F3X Q2R C4M P3 ` | 238   | 2.5  |
-| `scalar F3X Q1  C1R P3 ` | 238   | 1.4  |
-| `scalar F2X Q2R C4F P3 ` | 239   | 3.1  |
-| `scalar F3R Q4M C3  P3 ` | 241   | 1.1  |
-| `scalar F2X Q4F C1R P3 ` | 241   | 1.1  |
-| `scalar F3R Q4M C4F P3 ` | 242   | 1.6  |
-| `scalar F3X Q4F C1R P3 ` | 242   | 1.4  |
-| `scalar F2X Q2X C2X P3 ` | 243   | 4.3  |
-| `scalar F3R Q4M C4M P3 ` | 243   | 1.2  |
-| `scalar F2X Q2X C5F P3 ` | 243   | 4.3  |
-| `scalar F2X Q1  C1R P3 ` | 243   | 1.8  |
-| `scalar F3X Q2R C4F P3 ` | 244   | 6.2  |
-| `scalar F3X Q4M C1R P3 ` | 245   | 1.2  |
-| `scalar F3X Q2X C5M P3 ` | 246   | 1.6  |
-| `scalar F2X Q2X C1X P3 ` | 247   | 7.2  |
-| `scalar F2X Q4M C1R P3 ` | 247   | 1.9  |
-| `scalar F2X Q2R C3  P3 ` | 247   | 5.1  |
-| `scalar F2X Q2R C4M P3 ` | 249   | 4.2  |
-| `scalar F3R Q1  C5F P3 ` | 249   | 0.8  |
-| `scalar F3R Q1  C2X P3 ` | 256   | 0.9  |
-| `scalar F2X Q2X C2R P3 ` | 256   | 2.8  |
-| `scalar F3R Q1  C1X P3 ` | 256   | 0.8  |
-| `scalar F3R Q4F C5F P3 ` | 259   | 1.2  |
-| `scalar F3R Q4M C5F P3 ` | 262   | 2.2  |
-| `scalar F3R Q1  C5M P3 ` | 262   | 0.6  |
-| `scalar F3R Q4F C1X P3 ` | 263   | 1.1  |
-| `scalar F3R Q4F C2X P3 ` | 263   | 1.2  |
-| `scalar F3R Q2X C3  P3 ` | 264   | 2.6  |
-| `scalar F3X Q2R C5F P3 ` | 264   | 1.6  |
-| `scalar F3R Q2X C4F P3 ` | 264   | 2.3  |
-| `scalar F2X Q2X C5M P3 ` | 265   | 4.6  |
-| `scalar F2X Q3M C3  P3 ` | 265   | 0.8  |
-| `scalar F2X Q3M C4M P3 ` | 265   | 0.8  |
-| `scalar F3R Q2X C4M P3 ` | 266   | 2.4  |
-| `scalar F3X Q2X C2R P3 ` | 266   | 7.5  |
-| `scalar F3X Q3M C3  P3 ` | 266   | 0.9  |
-| `scalar F2R Q1  C4M P3 ` | 267   | 0.9  |
-| `scalar F2R Q1  C4F P3 ` | 267   | 1.2  |
-| `scalar F3R Q4M C1X P3 ` | 267   | 1.0  |
-| `scalar F3X Q3M C4M P3 ` | 267   | 1.0  |
-| `scalar F2R Q4F C3  P3 ` | 268   | 0.9  |
-| `scalar F2R Q4F C4F P3 ` | 268   | 1.3  |
-| `scalar F3X Q2R C2X P3 ` | 268   | 1.3  |
-| `scalar F3X Q2R C1X P3 ` | 268   | 1.4  |
-| `scalar F2X Q3M C4F P3 ` | 268   | 0.9  |
-| `scalar F3R Q3M C3  P3 ` | 269   | 1.1  |
-| `scalar F2R Q1  C3  P3 ` | 269   | 1.1  |
-| `scalar F3R Q4M C5M P3 ` | 269   | 1.0  |
-| `scalar F3R Q4M C2X P3 ` | 269   | 1.2  |
-| `scalar F2R Q4F C4M P3 ` | 270   | 1.1  |
-| `scalar F3R Q3M C4F P3 ` | 270   | 1.2  |
-| `scalar F3X Q3M C4F P3 ` | 271   | 0.9  |
-| `object F3X Q1  C1R P3 ` | 271   | 0.6  |
-| `object F2X Q1  C1R P3 ` | 271   | 0.7  |
-| `scalar F3R Q1  C2R P3 ` | 271   | 0.7  |
-| `scalar F3R Q3M C4M P3 ` | 273   | 1.0  |
-| `scalar F3R Q4F C5M P3 ` | 274   | 0.8  |
-| `object F3R Q1  C1X P3 ` | 275   | 0.7  |
-| `scalar F2X Q2R C5F P3 ` | 275   | 2.3  |
-| `scalar F3X Q2R C5M P3 ` | 276   | 1.2  |
-| `scalar F3X Q2X C1R P3 ` | 277   | 1.4  |
-| `scalar F2R Q4M C4F P3 ` | 277   | 1.1  |
-| `scalar F2R Q4M C4M P3 ` | 279   | 1.1  |
-| `scalar F2R Q4M C3  P3 ` | 280   | 1.5  |
-| `scalar F3R Q2X C5F P3 ` | 281   | 1.6  |
-| `scalar F2X Q2R C1X P3 ` | 285   | 4.3  |
-| `scalar F3R Q4F C2R P3 ` | 285   | 1.1  |
-| `scalar F3R Q2X C1X P3 ` | 285   | 1.2  |
-| `scalar F2X Q2R C2X P3 ` | 285   | 5.0  |
-| `scalar F3R Q2R C3  P3 ` | 287   | 0.9  |
-| `scalar F2X Q2X C1R P3 ` | 289   | 5.0  |
-| `scalar F3R Q2R C4M P3 ` | 289   | 1.5  |
-| `scalar F3R Q2R C4F P3 ` | 289   | 1.0  |
-| `scalar F2R Q1  C5F P3 ` | 289   | 0.9  |
-| `scalar F2X Q3M C5F P3 ` | 289   | 0.9  |
-| `scalar F3R Q4M C2R P3 ` | 289   | 1.6  |
-| `scalar F5M Q3M C3  P3 ` | 290   | 1.1  |
-| `scalar F5M Q3M C4M P3 ` | 290   | 1.1  |
-| `scalar F3R Q1  C1R P3 ` | 291   | 0.7  |
-| `scalar F2X Q3M C2X P3 ` | 291   | 0.7  |
-| `scalar F2X Q3M C1X P3 ` | 291   | 1.0  |
-| `scalar F3R Q2X C2X P3 ` | 291   | 2.1  |
-| `scalar F5M Q3M C4F P3 ` | 291   | 1.1  |
-| `scalar F3X Q2R C2R P3 ` | 291   | 2.0  |
-| `scalar F2R Q4F C5F P3 ` | 292   | 1.2  |
-| `scalar F3X Q3M C1X P3 ` | 292   | 1.0  |
-| `scalar F3X Q3M C5F P3 ` | 292   | 1.5  |
-| `scalar F2X Q2R C5M P3 ` | 293   | 2.7  |
-| `scalar F3X Q3M C2X P3 ` | 293   | 1.0  |
-| `scalar F3R Q3M C2X P3 ` | 296   | 1.2  |
-| `scalar F3R Q2X C5M P3 ` | 296   | 1.5  |
-| `scalar F3R Q3M C1X P3 ` | 297   | 1.2  |
-| `scalar F2R Q4F C1X P3 ` | 298   | 1.1  |
-| `scalar F2R Q1  C2X P3 ` | 298   | 1.2  |
-| `scalar F2R Q4F C2X P3 ` | 298   | 0.9  |
-| `scalar F2R Q4M C5F P3 ` | 301   | 1.1  |
-| `scalar F3R Q4F C1R P3 ` | 302   | 1.1  |
-| `scalar F2R Q1  C1X P3 ` | 302   | 2.0  |
-| `scalar F5M Q3M C2R P3 ` | 304   | 1.2  |
-| `scalar F2R Q3M C3  P3 ` | 305   | 1.1  |
-| `scalar F3R Q4M C1R P3 ` | 306   | 1.0  |
-| `scalar F2X Q3M C5M P3 ` | 306   | 0.6  |
-| `scalar F3R Q2X C2R P3 ` | 307   | 1.0  |
-| `scalar F3R Q3M C5F P3 ` | 308   | 1.0  |
-| `scalar F2R Q3M C4M P3 ` | 308   | 0.8  |
-| `scalar F2R Q4M C2X P3 ` | 308   | 1.7  |
-| `scalar F2R Q1  C5M P3 ` | 309   | 2.2  |
-| `scalar F3X Q3M C5M P3 ` | 309   | 1.5  |
-| `scalar F2R Q4F C5M P3 ` | 309   | 2.0  |
-| `scalar F2R Q4M C1X P3 ` | 310   | 2.2  |
-| `scalar F2R Q3M C4F P3 ` | 311   | 1.0  |
-| `scalar F3R Q2R C5F P3 ` | 311   | 0.8  |
-| `scalar F5M Q3M C1X P3 ` | 311   | 1.6  |
-| `scalar F2X Q2R C2R P3 ` | 311   | 5.8  |
-| `object F2R Q1  C1X P3 ` | 313   | 0.4  |
-| `scalar F2X Q3M C2R P3 ` | 313   | 0.8  |
-| `scalar F3X Q2R C1R P3 ` | 314   | 0.9  |
-| `scalar F3R Q3M C2R P3 ` | 315   | 1.0  |
-| `scalar F3X Q3M C2R P3 ` | 315   | 0.9  |
-| `scalar F5M Q3M C5F P3 ` | 315   | 1.0  |
-| `scalar F2R Q2X C4M P3 ` | 317   | 2.3  |
-| `scalar F2R Q4F C2R P3 ` | 318   | 0.9  |
-| `scalar F2R Q1  C2R P3 ` | 318   | 1.8  |
-| `scalar F3R Q2R C2X P3 ` | 318   | 0.8  |
-| `scalar F3R Q2R C1X P3 ` | 319   | 1.0  |
-| `scalar F2R Q4M C5M P3 ` | 320   | 1.7  |
-| `scalar F2R Q2X C4F P3 ` | 321   | 2.0  |
-| `object F3R Q1  C1R P3 ` | 321   | 0.6  |
-| `scalar F2R Q2X C3  P3 ` | 322   | 2.1  |
-| `scalar F3R Q2X C1R P3 ` | 324   | 1.0  |
-| `scalar F3R Q3M C5M P3 ` | 325   | 0.9  |
-| `scalar F3R Q2R C5M P3 ` | 325   | 0.8  |
-| `scalar F5M Q3M C5M P3 ` | 327   | 0.9  |
-| `scalar F5M Q3M C1R P3 ` | 327   | 1.6  |
-| `scalar F2R Q4M C2R P3 ` | 329   | 1.2  |
-| `scalar F5M Q3M C2X P3 ` | 330   | 4.9  |
-| `scalar F2X Q2R C1R P3 ` | 331   | 4.6  |
-| `scalar F2R Q2R C4F P3 ` | 335   | 1.8  |
-| `scalar F2X Q3M C1R P3 ` | 336   | 1.0  |
-| `scalar F3R Q3M C1R P3 ` | 336   | 1.8  |
-| `scalar F2R Q2X C1X P3 ` | 336   | 1.8  |
-| `scalar F3X Q3M C1R P3 ` | 336   | 1.0  |
-| `scalar F2R Q2R C3  P3 ` | 337   | 1.6  |
-| `scalar F2R Q4F C1R P3 ` | 337   | 1.1  |
-| `scalar F2R Q2R C4M P3 ` | 337   | 2.0  |
-| `scalar F2R Q3M C2X P3 ` | 337   | 1.2  |
-| `scalar F2R Q3M C1X P3 ` | 338   | 1.1  |
-| `scalar F2R Q3M C5F P3 ` | 338   | 0.9  |
-| `scalar F2R Q1  C1R P3 ` | 339   | 1.9  |
-| `scalar F3R Q2R C2R P3 ` | 340   | 1.4  |
-| `scalar F2R Q2X C5F P3 ` | 342   | 2.7  |
-| `scalar F2R Q4M C1R P3 ` | 344   | 0.9  |
-| `scalar F2R Q3M C2R P3 ` | 352   | 1.8  |
-| `scalar F2R Q2X C2X P3 ` | 356   | 2.4  |
-| `scalar F2R Q3M C5M P3 ` | 357   | 1.2  |
-| `scalar F3R Q2R C1R P3 ` | 357   | 0.8  |
-| `scalar F2R Q2R C5F P3 ` | 359   | 3.1  |
-| `object F2R Q1  C1R P3 ` | 363   | 0.7  |
-| `scalar F2R Q2X C5M P3 ` | 365   | 2.5  |
-| `scalar F2R Q2R C2X P3 ` | 367   | 1.8  |
-| `scalar F2R Q3M C1R P3 ` | 370   | 0.9  |
-| `scalar F2R Q2R C5M P3 ` | 376   | 3.0  |
-| `scalar F2R Q2R C1X P3 ` | 378   | 3.3  |
-| `scalar F2R Q2X C2R P3 ` | 391   | 8.4  |
-| `scalar F2R Q2X C1R P3 ` | 392   | 4.2  |
-| `scalar F2R Q2R C2R P3 ` | 405   | 5.1  |
-| `scalar F2R Q2R C1R P3 ` | 432   | 3.4  |
-| `scalar F5F Q1  C3  P3 ` | 721   | 1.3  |
-| `scalar F5F Q1  C5F P3 ` | 759   | 0.7  |
-| `scalar F5F Q1  C4F P3 ` | 760   | 1.7  |
-| `scalar F5F Q4F C3  P3 ` | 764   | 1.0  |
-| `scalar F5F Q4F C4F P3 ` | 764   | 1.2  |
-| `scalar F5F Q1  C4M P3 ` | 768   | 1.5  |
-| `scalar F5F Q4M C3  P3 ` | 792   | 1.3  |
-| `scalar F5F Q4F C4M P3 ` | 794   | 1.1  |
-| `scalar F5F Q4F C5F P3 ` | 796   | 0.4  |
-| `scalar F5F Q4M C4F P3 ` | 824   | 1.1  |
-| `scalar F5F Q4M C5F P3 ` | 833   | 0.6  |
-| `scalar F5F Q4M C4M P3 ` | 862   | 1.1  |
-| `scalar F5F Q1  C5M P3 ` | 869   | 0.5  |
-| `scalar F1X Q3M C4F P3 ` | 903   | 0.2  |
-| `scalar F5F Q4F C5M P3 ` | 904   | 0.4  |
-| `scalar F1X Q3M C3  P3 ` | 904   | 0.2  |
-| `scalar F1X Q3M C4M P3 ` | 904   | 0.2  |
-| `scalar F1X Q3M C2R P3 ` | 925   | 0.3  |
-| `scalar F1X Q3M C2X P3 ` | 933   | 0.2  |
-| `scalar F1X Q3M C5F P3 ` | 933   | 0.1  |
-| `scalar F1X Q3M C1X P3 ` | 933   | 0.2  |
-| `scalar F1X Q3M C5M P3 ` | 944   | 0.2  |
-| `scalar F5F Q4M C5M P3 ` | 951   | 0.2  |
-| `scalar F1X Q3M C1R P3 ` | 956   | 0.2  |
-| `scalar F5F Q1  C2X P3 ` | 1020  | 0.7  |
-| `scalar F5F Q1  C1X P3 ` | 1022  | 1.6  |
-| `scalar F5F Q4F C1X P3 ` | 1023  | 0.4  |
-| `scalar F5F Q4F C2X P3 ` | 1023  | 0.4  |
-| `scalar F5M Q1  C5F P3 ` | 1026  | 0.3  |
-| `scalar F5M Q1  C3  P3 ` | 1033  | 0.7  |
-| `scalar F5M Q1  C4F P3 ` | 1040  | 1.1  |
-| `scalar F5M Q1  C4M P3 ` | 1066  | 0.7  |
-| `scalar F5M Q4F C3  P3 ` | 1067  | 0.7  |
-| `scalar F5F Q4M C2X P3 ` | 1072  | 0.6  |
-| `scalar F5M Q4F C4F P3 ` | 1072  | 1.0  |
-| `scalar F5M Q4F C5F P3 ` | 1083  | 0.4  |
-| `scalar F5F Q3F C4M P3 ` | 1087  | 0.3  |
-| `scalar F5M Q4F C4M P3 ` | 1103  | 0.9  |
-| `scalar F5F Q3F C2R P3 ` | 1107  | 0.5  |
-| `scalar F5F Q3F C5F P3 ` | 1116  | 0.5  |
-| `scalar F5M Q4M C5F P3 ` | 1123  | 0.5  |
-| `scalar F5F Q3F C5M P3 ` | 1123  | 0.4  |
-| `scalar F5F Q3F C1X P3 ` | 1125  | 0.5  |
-| `scalar F5M Q4M C3  P3 ` | 1125  | 1.2  |
-| `scalar F5F Q3F C2X P3 ` | 1127  | 0.6  |
-| `scalar F4  Q3F C3  P3 ` | 1128  | 0.4  |
-| `scalar F5M Q1  C5M P3 ` | 1131  | 0.2  |
-| `scalar F5M Q4M C4F P3 ` | 1143  | 1.2  |
-| `scalar F4  Q3F C4F P3 ` | 1143  | 1.1  |
-| `scalar F4  Q3F C4M P3 ` | 1147  | 0.7  |
-| `scalar F4  Q3F C1X P3 ` | 1156  | 0.3  |
-| `scalar F4  Q3F C2X P3 ` | 1156  | 0.3  |
-| `scalar F4  Q3F C5M P3 ` | 1162  | 0.2  |
-| `scalar F4  Q3F C2R P3 ` | 1166  | 0.5  |
-| `scalar F5F Q2X C5F P3 ` | 1167  | 2.8  |
-| `scalar F5M Q4F C5M P3 ` | 1170  | 0.3  |
-| `scalar F4  Q3F C1R P3 ` | 1173  | 0.7  |
-| `scalar F5F Q3F C4F P3 ` | 1175  | 2.0  |
-| `scalar F4  Q3F C5F P3 ` | 1176  | 0.5  |
-| `scalar F5M Q4M C4M P3 ` | 1179  | 1.2  |
-| `scalar F5F Q3F C3  P3 ` | 1181  | 1.9  |
-| `scalar F5F Q3F C1R P3 ` | 1201  | 0.9  |
-| `scalar F5M Q3F C3  P3 ` | 1222  | 0.5  |
-| `scalar F5M Q3F C4F P3 ` | 1223  | 0.4  |
-| `scalar F5F Q2X C3  P3 ` | 1223  | 4.4  |
-| `scalar F5M Q3F C4M P3 ` | 1226  | 0.6  |
-| `scalar F5F Q4M C1X P3 ` | 1227  | 0.4  |
-| `scalar F5F Q2X C4F P3 ` | 1231  | 3.9  |
-| `scalar F5M Q3F C5F P3 ` | 1237  | 0.4  |
-| `scalar F5M Q3F C5M P3 ` | 1244  | 0.3  |
-| `scalar F5M Q4M C5M P3 ` | 1245  | 0.7  |
-| `scalar F5M Q3F C2R P3 ` | 1253  | 0.3  |
-| `scalar F5F Q2X C4M P3 ` | 1270  | 4.1  |
-| `scalar F5F Q2X C5M P3 ` | 1277  | 2.5  |
-| `scalar F5M Q3F C1X P3 ` | 1288  | 0.5  |
-| `scalar F5M Q3F C2X P3 ` | 1289  | 0.5  |
-| `scalar F5M Q3F C1R P3 ` | 1301  | 1.0  |
-| `scalar F5M Q1  C2X P3 ` | 1331  | 0.4  |
-| `scalar F5M Q1  C1X P3 ` | 1332  | 0.4  |
-| `scalar F5M Q4F C2X P3 ` | 1376  | 0.4  |
-| `scalar F5M Q4F C1X P3 ` | 1377  | 0.5  |
-| `scalar F5M Q4M C1X P3 ` | 1429  | 0.4  |
-| `scalar F5M Q4M C2X P3 ` | 1474  | 0.5  |
-| `scalar F5M Q2X C5F P3 ` | 1474  | 1.2  |
-| `scalar F4  Q1  C3  P3 ` | 1537  | 0.3  |
-| `scalar F4  Q1  C4F P3 ` | 1541  | 0.3  |
-| `scalar F4  Q1  C4M P3 ` | 1563  | 0.3  |
-| `scalar F4  Q1  C5F P3 ` | 1565  | 0.2  |
-| `scalar F5M Q2X C5M P3 ` | 1570  | 1.3  |
-| `scalar F4  Q4F C3  P3 ` | 1572  | 0.5  |
-| `scalar F4  Q4F C4F P3 ` | 1581  | 0.6  |
-| `scalar F4  Q4F C5F P3 ` | 1595  | 0.4  |
-| `scalar F4  Q4F C4M P3 ` | 1598  | 0.5  |
-| `scalar F5M Q2X C3  P3 ` | 1612  | 2.0  |
-| `scalar F5M Q2X C4F P3 ` | 1618  | 1.5  |
-| `scalar F4  Q4M C3  P3 ` | 1624  | 0.8  |
-| `scalar F4  Q4M C4F P3 ` | 1634  | 0.8  |
-| `scalar F4  Q4M C5F P3 ` | 1635  | 0.7  |
-| `scalar F5M Q2X C4M P3 ` | 1637  | 2.0  |
-| `scalar F4  Q1  C5M P3 ` | 1645  | 0.5  |
-| `scalar F4  Q4M C4M P3 ` | 1654  | 0.7  |
-| `scalar F4  Q4F C5M P3 ` | 1668  | 0.4  |
-| `object F4  Q1  C1X P3 ` | 1670  | 0.2  |
-| `scalar F4  Q1  C2X P3 ` | 1689  | 0.2  |
-| `scalar F4  Q1  C1X P3 ` | 1691  | 0.5  |
-| `scalar F5F Q2X C2X P3 ` | 1727  | 2.8  |
-| `scalar F4  Q4M C5M P3 ` | 1729  | 3.3  |
-| `scalar F4  Q4F C2X P3 ` | 1739  | 0.7  |
-| `scalar F5F Q2X C1X P3 ` | 1741  | 2.0  |
-| `scalar F4  Q4F C1X P3 ` | 1745  | 1.3  |
-| `scalar F5F Q1  C2R P3 ` | 1748  | 1.4  |
-| `scalar F5F Q4F C2R P3 ` | 1749  | 0.6  |
-| `scalar F4  Q2X C5F P3 ` | 1774  | 1.0  |
-| `scalar F4  Q2X C3  P3 ` | 1781  | 1.5  |
-| `scalar F4  Q2X C4F P3 ` | 1792  | 1.3  |
-| `scalar F5F Q4M C2R P3 ` | 1796  | 0.5  |
-| `scalar F4  Q4M C2X P3 ` | 1801  | 1.2  |
-| `scalar F4  Q4M C1X P3 ` | 1802  | 1.0  |
-| `scalar F4  Q2X C4M P3 ` | 1805  | 1.3  |
-| `scalar F5F Q2R C5F P3 ` | 1817  | 1.1  |
-| `scalar F1X Q3F C4M P3 ` | 1839  | 0.1  |
-| `scalar F1X Q3F C3  P3 ` | 1841  | 0.2  |
-| `scalar F1X Q3F C4F P3 ` | 1841  | 0.1  |
-| `scalar F3R Q3F C4M P3 ` | 1843  | 0.3  |
-| `scalar F4  Q2X C5M P3 ` | 1856  | 0.9  |
-| `scalar F1X Q3F C2R P3 ` | 1861  | 0.2  |
-| `scalar F1X Q3F C5F P3 ` | 1862  | 0.1  |
-| `scalar F1X Q3F C1X P3 ` | 1872  | 0.1  |
-| `scalar F1X Q3F C2X P3 ` | 1873  | 0.1  |
-| `scalar F1X Q3F C5M P3 ` | 1879  | 0.2  |
-| `scalar F3R Q3F C2R P3 ` | 1886  | 0.4  |
-| `scalar F1X Q3F C1R P3 ` | 1894  | 0.1  |
-| `scalar F3R Q3F C5M P3 ` | 1911  | 0.6  |
-| `scalar F3R Q3F C5F P3 ` | 1911  | 0.5  |
-| `scalar F2R Q3F C4M P3 ` | 1913  | 0.4  |
-| `scalar F2R Q3F C5M P3 ` | 1938  | 0.4  |
-| `scalar F5F Q2R C5M P3 ` | 1956  | 2.0  |
-| `scalar F5F Q2R C4M P3 ` | 1966  | 1.1  |
-| `scalar F2R Q3F C3  P3 ` | 1968  | 0.6  |
-| `scalar F2R Q3F C5F P3 ` | 1972  | 0.6  |
-| `scalar F4  Q2X C1X P3 ` | 1976  | 0.9  |
-| `scalar F4  Q2X C2X P3 ` | 1977  | 1.1  |
-| `scalar F5F Q2R C4F P3 ` | 1978  | 2.2  |
-| `scalar F5M Q1  C2R P3 ` | 1986  | 0.6  |
-| `scalar F5F Q4F C1R P3 ` | 1987  | 0.4  |
-| `scalar F5F Q2R C3  P3 ` | 1988  | 2.1  |
-| `scalar F2R Q3F C2X P3 ` | 2001  | 1.1  |
-| `scalar F2R Q3F C4F P3 ` | 2005  | 0.7  |
-| `scalar F5F Q1  C1R P3 ` | 2011  | 1.2  |
-| `scalar F5F Q4M C1R P3 ` | 2027  | 0.3  |
-| `scalar F5M Q2X C2X P3 ` | 2027  | 2.8  |
-| `scalar F3R Q3F C3  P3 ` | 2030  | 1.1  |
-| `scalar F5M Q2X C1X P3 ` | 2034  | 2.8  |
-| `scalar F3R Q3F C1X P3 ` | 2045  | 1.4  |
-| `scalar F3R Q3F C2X P3 ` | 2047  | 1.3  |
-| `scalar F2R Q3F C1X P3 ` | 2055  | 0.8  |
-| `scalar F5M Q4M C2R P3 ` | 2089  | 1.1  |
-| `scalar F4  Q1  C2R P3 ` | 2090  | 0.4  |
-| `scalar F5M Q2R C5F P3 ` | 2112  | 0.4  |
-| `scalar F2R Q3F C1R P3 ` | 2114  | 1.2  |
-| `scalar F3X Q3F C3  P3 ` | 2131  | 0.6  |
-| `scalar F3X Q3F C4M P3 ` | 2135  | 0.6  |
-| `scalar F2X Q3F C4M P3 ` | 2136  | 0.8  |
-| `scalar F3R Q3F C1R P3 ` | 2138  | 1.1  |
-| `scalar F4  Q4F C2R P3 ` | 2141  | 0.6  |
-| `scalar F3R Q3F C4F P3 ` | 2153  | 1.3  |
-| `scalar F2X Q3F C3  P3 ` | 2155  | 1.0  |
-| `scalar F2X Q3F C5M P3 ` | 2160  | 0.2  |
-| `scalar F4  Q2R C5F P3 ` | 2160  | 0.5  |
-| `scalar F4  Q2R C4F P3 ` | 2161  | 0.5  |
-| `scalar F4  Q2R C3  P3 ` | 2162  | 0.5  |
-| `scalar F2R Q3F C2R P3 ` | 2168  | 1.1  |
-| `scalar F3X Q3F C5M P3 ` | 2170  | 0.7  |
-| `scalar F3X Q3F C2R P3 ` | 2177  | 0.3  |
-| `scalar F2X Q3F C5F P3 ` | 2178  | 0.3  |
-| `scalar F5M Q2R C3  P3 ` | 2179  | 0.6  |
-| `scalar F4  Q2R C4M P3 ` | 2180  | 0.5  |
-| `scalar F3X Q3F C5F P3 ` | 2180  | 0.2  |
-| `scalar F5M Q2R C4F P3 ` | 2196  | 0.6  |
-| `scalar F5M Q4F C2R P3 ` | 2199  | 0.5  |
-| `scalar F5M Q2R C5M P3 ` | 2200  | 0.4  |
-| `scalar F2X Q3F C2R P3 ` | 2201  | 1.4  |
-| `scalar F3X Q3F C1R P3 ` | 2204  | 0.4  |
-| `scalar F4  Q4M C2R P3 ` | 2205  | 0.9  |
-| `scalar F3X Q3F C4F P3 ` | 2207  | 0.7  |
-| `scalar F4  Q1  C1R P3 ` | 2214  | 0.6  |
-| `scalar F5M Q2R C4M P3 ` | 2216  | 0.7  |
-| `scalar F2X Q3F C4F P3 ` | 2221  | 0.9  |
-| `scalar F5M Q1  C1R P3 ` | 2228  | 0.5  |
-| `scalar F4  Q2R C5M P3 ` | 2246  | 0.6  |
-| `scalar F3X Q3F C2X P3 ` | 2255  | 0.5  |
-| `scalar F3X Q3F C1X P3 ` | 2256  | 0.5  |
-| `scalar F2X Q3F C1R P3 ` | 2258  | 1.1  |
-| `object F4  Q1  C1R P3 ` | 2263  | 0.2  |
-| `scalar F2X Q3F C2X P3 ` | 2295  | 1.2  |
-| `scalar F4  Q4F C1R P3 ` | 2298  | 1.2  |
-| `scalar F2X Q3F C1X P3 ` | 2301  | 0.9  |
-| `scalar F5M Q4F C1R P3 ` | 2311  | 1.4  |
-| `scalar F5M Q4M C1R P3 ` | 2335  | 0.3  |
-| `scalar F4  Q4M C1R P3 ` | 2341  | 0.8  |
-| `scalar F4  Q2X C2R P3 ` | 2359  | 0.3  |
-| `scalar F4  Q2R C2X P3 ` | 2413  | 0.3  |
-| `scalar F4  Q2R C1X P3 ` | 2419  | 0.6  |
-| `scalar F5F Q2R C1X P3 ` | 2451  | 2.4  |
-| `scalar F5F Q2X C2R P3 ` | 2478  | 7.3  |
-| `scalar F4  Q2X C1R P3 ` | 2493  | 0.3  |
-| `scalar F5F Q2R C2X P3 ` | 2494  | 4.2  |
-| `scalar F5M Q2R C1X P3 ` | 2634  | 0.6  |
-| `scalar F5M Q2R C2X P3 ` | 2634  | 0.5  |
-| `scalar F5M Q2X C2R P3 ` | 2661  | 1.0  |
-| `scalar F4  Q2R C2R P3 ` | 2781  | 0.6  |
-| `scalar F5F Q2X C1R P3 ` | 2789  | 3.9  |
-| `scalar F5M Q2X C1R P3 ` | 2895  | 0.9  |
-| `scalar F4  Q2R C1R P3 ` | 2913  | 0.4  |
-| `scalar F5F Q2R C2R P3 ` | 3194  | 2.5  |
-| `scalar F1R Q3M C3  P3 ` | 3223  | 0.3  |
-| `scalar F1R Q3M C4M P3 ` | 3225  | 0.2  |
-| `scalar F1R Q3M C4F P3 ` | 3231  | 0.2  |
-| `scalar F1R Q3M C2R P3 ` | 3254  | 0.2  |
-| `scalar F1R Q3M C5F P3 ` | 3259  | 0.3  |
-| `scalar F1R Q3M C5M P3 ` | 3274  | 0.3  |
-| `scalar F1R Q3M C2X P3 ` | 3277  | 0.3  |
-| `scalar F5M Q2R C2R P3 ` | 3278  | 0.5  |
-| `scalar F1R Q3M C1X P3 ` | 3278  | 0.2  |
-| `scalar F1R Q3M C1R P3 ` | 3298  | 0.3  |
-| `scalar F5F Q2R C1R P3 ` | 3422  | 2.9  |
-| `scalar F5M Q2R C1R P3 ` | 3572  | 0.3  |
-| `scalar F1R Q3F C3  P3 ` | 4196  | 0.2  |
-| `scalar F1R Q3F C4M P3 ` | 4197  | 0.2  |
-| `scalar F1R Q3F C2R P3 ` | 4219  | 0.2  |
-| `scalar F1R Q3F C5M P3 ` | 4236  | 0.4  |
-| `scalar F1R Q3F C4F P3 ` | 4245  | 0.4  |
-| `scalar F1R Q3F C1R P3 ` | 4258  | 0.2  |
-| `scalar F1R Q3F C5F P3 ` | 4289  | 0.2  |
-| `scalar F1R Q3F C1X P3 ` | 4315  | 0.2  |
-| `scalar F1R Q3F C2X P3 ` | 4319  | 0.2  |
-| `scalar F1X Q1  C4F P3 ` | 6977  | 0.4  |
-| `scalar F1X Q4F C4M P3 ` | 6994  | 0.2  |
-| `scalar F1X Q4M C4M P3 ` | 7258  | 1.2  |
-| `scalar F1X Q1  C5F P3 ` | 7329  | 0.4  |
-| `scalar F1X Q1  C4M P3 ` | 7411  | 0.2  |
-| `scalar F1X Q4F C5F P3 ` | 7429  | 0.1  |
-| `scalar F1X Q4F C4F P3 ` | 7429  | 0.1  |
-| `scalar F1X Q4F C3  P3 ` | 7431  | 0.2  |
-| `scalar F1X Q1  C5M P3 ` | 7486  | 0.2  |
-| `scalar F1X Q4M C5F P3 ` | 7514  | 0.2  |
-| `scalar F1X Q4F C5M P3 ` | 7533  | 0.2  |
-| `scalar F1X Q4M C4F P3 ` | 7565  | 0.8  |
-| `scalar F1X Q2X C3  P3 ` | 7566  | 0.3  |
-| `scalar F1X Q4M C3  P3 ` | 7681  | 1.2  |
-| `scalar F1X Q1  C3  P3 ` | 7713  | 8.9  |
-| `scalar F1X Q4M C5M P3 ` | 7741  | 2.3  |
-| `scalar F1X Q4F C2X P3 ` | 7807  | 0.4  |
-| `scalar F1X Q4F C1X P3 ` | 7807  | 0.2  |
-| `scalar F1X Q2X C5F P3 ` | 7877  | 0.3  |
-| `scalar F1X Q2X C5M P3 ` | 7964  | 0.4  |
-| `scalar F1X Q2X C4F P3 ` | 8023  | 0.2  |
-| `scalar F1X Q4M C2X P3 ` | 8032  | 1.7  |
-| `scalar F1X Q2X C4M P3 ` | 8059  | 0.4  |
-| `scalar F1X Q4M C1X P3 ` | 8161  | 1.9  |
-| `object F1X Q1  C1X P3 ` | 8180  | 0.1  |
-| `scalar F1X Q1  C2X P3 ` | 8189  | 1.7  |
-| `scalar F1X Q1  C1X P3 ` | 8353  | 2.9  |
-| `scalar F1X Q2X C2X P3 ` | 8411  | 0.4  |
-| `scalar F1X Q2X C1X P3 ` | 8413  | 0.4  |
-| `scalar F1X Q4F C2R P3 ` | 8428  | 0.2  |
-| `scalar F1X Q4F C1R P3 ` | 8463  | 0.1  |
-| `scalar F1X Q2R C5F P3 ` | 8512  | 0.3  |
-| `scalar F1X Q2R C3  P3 ` | 8599  | 0.3  |
-| `scalar F1X Q2R C5M P3 ` | 8630  | 0.3  |
-| `scalar F1X Q2R C4M P3 ` | 8636  | 0.3  |
-| `scalar F1X Q4M C1R P3 ` | 8647  | 8.8  |
-| `scalar F1X Q2R C4F P3 ` | 8672  | 0.4  |
-| `scalar F1X Q1  C2R P3 ` | 8712  | 1.7  |
-| `scalar F1X Q4M C2R P3 ` | 8848  | 2.3  |
-| `scalar F1X Q2X C2R P3 ` | 9094  | 0.3  |
-| `object F1X Q1  C1R P3 ` | 9159  | 0.8  |
-| `scalar F1X Q2R C1X P3 ` | 9180  | 0.3  |
-| `scalar F1X Q2R C2X P3 ` | 9186  | 0.2  |
-| `scalar F1X Q2X C1R P3 ` | 9352  | 0.3  |
-| `scalar F1X Q1  C1R P3 ` | 9491  | 2.4  |
-| `scalar F1X Q2R C2R P3 ` | 9814  | 0.3  |
-| `scalar F1X Q2R C1R P3 ` | 10102 | 0.3  |
-| `scalar F1R Q4F C5M P3 ` | 26904 | 0.1  |
-| `scalar F1R Q4F C3  P3 ` | 27274 | 0.4  |
-| `scalar F1R Q4F C5F P3 ` | 27552 | 2.3  |
-| `scalar F1R Q4M C1X P3 ` | 27607 | 0.1  |
-| `scalar F1R Q4F C4F P3 ` | 27642 | 1.7  |
-| `scalar F1R Q2X C5M P3 ` | 27684 | 1.3  |
-| `scalar F1R Q2X C5F P3 ` | 27748 | 0.8  |
-| `scalar F1R Q2X C4F P3 ` | 27903 | 1.3  |
-| `scalar F1R Q4F C1X P3 ` | 28000 | 1.9  |
-| `scalar F1R Q1  C4F P3 ` | 28224 | 1.6  |
-| `scalar F1R Q2X C1X P3 ` | 28228 | 0.2  |
-| `scalar F1R Q2R C5F P3 ` | 28286 | 0.1  |
-| `scalar F1R Q1  C1X P3 ` | 28306 | 1.1  |
-| `scalar F1R Q4F C4M P3 ` | 28355 | 0.7  |
-| `scalar F1R Q2X C4M P3 ` | 28362 | 2.1  |
-| `scalar F1R Q2R C5M P3 ` | 28454 | 0.1  |
-| `scalar F1R Q1  C5M P3 ` | 28470 | 0.9  |
-| `scalar F1R Q4F C2X P3 ` | 28471 | 1.7  |
-| `scalar F1R Q2R C3  P3 ` | 28496 | 0.1  |
-| `scalar F1R Q2R C4M P3 ` | 28514 | 0.1  |
-| `scalar F1R Q2X C2X P3 ` | 28538 | 2.5  |
-| `scalar F1R Q4M C2X P3 ` | 28551 | 4.6  |
-| `scalar F1R Q1  C2X P3 ` | 28616 | 2.1  |
-| `scalar F1R Q2X C3  P3 ` | 28651 | 2.4  |
-| `scalar F1R Q2R C4F P3 ` | 28660 | 0.1  |
-| `scalar F1R Q4M C2R P3 ` | 28762 | 0.1  |
-| `scalar F1R Q4M C5F P3 ` | 28787 | 1.2  |
-| `scalar F1R Q1  C5F P3 ` | 28791 | 1.8  |
-| `scalar F1R Q4M C4F P3 ` | 28932 | 1.0  |
-| `scalar F1R Q4F C1R P3 ` | 29024 | 0.1  |
-| `scalar F1R Q4M C1R P3 ` | 29043 | 0.1  |
-| `scalar F1R Q1  C3  P3 ` | 29049 | 2.0  |
-| `scalar F1R Q1  C1R P3 ` | 29062 | 1.1  |
-| `scalar F1R Q2R C2X P3 ` | 29159 | 0.1  |
-| `scalar F1R Q2R C1X P3 ` | 29187 | 0.1  |
-| `scalar F1R Q1  C2R P3 ` | 29229 | 1.2  |
-| `scalar F1R Q4M C5M P3 ` | 29347 | 1.7  |
-| `scalar F1R Q4M C3  P3 ` | 29363 | 0.7  |
-| `scalar F1R Q2X C2R P3 ` | 29368 | 0.1  |
-| `scalar F1R Q1  C4M P3 ` | 29371 | 1.0  |
-| `scalar F1R Q2X C1R P3 ` | 29646 | 0.1  |
-| `scalar F1R Q4M C4M P3 ` | 29777 | 2.2  |
-| `scalar F1R Q4F C2R P3 ` | 29841 | 1.4  |
-| `scalar F1R Q2R C2R P3 ` | 30270 | 0.2  |
-| `scalar F1R Q2R C1R P3 ` | 33332 | 3.2  |
-| `object F1R Q1  C1X P3 ` | 39766 | 0.1  |
-| `object F1R Q1  C1R P3 ` | 41333 | 1.4  |
+Reference using `minizinc` with [model.mzn](zinc\model.mzn) from [solver-bench.csv](solver-bench.csv):
 
-Reference through `minizinc` using [bench.py](/bench.py) on [model.mzn](/arc/puzzles/chain/zinc/model.mzn) with `n = 600`. Statistics from [zinc-bench.csv](/puzzles/chain/zinc-bench.csv):
+![solver_bench_plot](media\solver-bench-plot.svg)
 
-| name      | mean | stdv |
-|-----------|------|------|
-| `Gecode`  | 3    | 11.3 |
-| `Chuffed` | 22   | 9.6  |
-| `CP-SAT`  | 108  | 1.5  |
+| tick   | name      | v   |   st mean |   st stdv |   sv mean |   sv stdv |
+|:-------|:----------|:----|----------:|----------:|----------:|----------:|
+| `10`   | `gecode`  | `-` |         5 |       2.5 |         7 |       3.0 |
+| `10`   | `cp-sat`  | `-` |         0 |       0.0 |       296 |       0.4 |
+| `10`   | `kernel`  | `0` |        14 |       1.1 |       455 |       1.4 |
+| `10`   | `chuffed` | `-` |      1342 |       0.7 |        62 |       3.0 |
+| `9`    | `gecode`  | `-` |         5 |      14.7 |         5 |       6.5 |
+| `9`    | `cp-sat`  | `-` |         0 |       0.0 |       241 |       0.3 |
+| `9`    | `kernel`  | `0` |        12 |       5.3 |       336 |       0.9 |
+| `9`    | `chuffed` | `-` |      1088 |       0.6 |        49 |       2.2 |
+| `8`    | `gecode`  | `-` |         4 |       1.3 |         4 |       7.8 |
+| `8`    | `cp-sat`  | `-` |         0 |       0.0 |       197 |       7.7 |
+| `8`    | `kernel`  | `0` |        10 |       6.2 |       244 |       0.8 |
+| `8`    | `chuffed` | `-` |       855 |       0.6 |        38 |       1.9 |
+| `7`    | `gecode`  | `-` |         3 |       1.5 |         3 |       1.6 |
+| `7`    | `cp-sat`  | `-` |         0 |       0.0 |       146 |       1.1 |
+| `7`    | `kernel`  | `0` |         7 |       4.4 |       204 |       2.6 |
+| `7`    | `chuffed` | `-` |       644 |       0.5 |        27 |       2.6 |
+| `6`    | `gecode`  | `-` |         3 |       3.2 |         3 |       4.5 |
+| `6`    | `cp-sat`  | `-` |         0 |       0.0 |       109 |       1.6 |
+| `6`    | `kernel`  | `0` |         5 |       2.4 |       130 |       1.0 |
+| `6`    | `chuffed` | `-` |       478 |       1.1 |        20 |       2.8 |
+| `5`    | `gecode`  | `-` |         3 |       1.4 |         2 |       1.7 |
+| `5`    | `cp-sat`  | `-` |         0 |       0.0 |        75 |       0.4 |
+| `5`    | `kernel`  | `0` |         4 |       6.1 |        74 |       1.2 |
+| `5`    | `chuffed` | `-` |       331 |       0.6 |        13 |       3.5 |
+| `4`    | `gecode`  | `-` |         2 |       3.4 |         1 |       2.6 |
+| `4`    | `kernel`  | `0` |         2 |       5.9 |        39 |       1.2 |
+| `4`    | `cp-sat`  | `-` |         0 |       0.0 |        49 |       1.1 |
+| `4`    | `chuffed` | `-` |       213 |       1.0 |         8 |       0.0 |
+| `3`    | `gecode`  | `-` |         2 |       2.6 |         1 |       2.7 |
+| `3`    | `kernel`  | `0` |         1 |      16.1 |        18 |       0.9 |
+| `3`    | `cp-sat`  | `-` |         0 |       0.0 |        28 |       1.9 |
+| `3`    | `chuffed` | `-` |       117 |       0.4 |         4 |       0.0 |
+| `2`    | `gecode`  | `-` |         1 |       5.1 |         0 |      15.8 |
+| `2`    | `kernel`  | `0` |         1 |       6.5 |         6 |       3.4 |
+| `2`    | `cp-sat`  | `-` |         0 |       0.0 |        13 |       2.0 |
+| `2`    | `chuffed` | `-` |        55 |       3.6 |         1 |      39.1 |
+| `1`    | `gecode`  | `-` |         1 |       0.9 |         0 |       4.4 |
+| `1`    | `kernel`  | `0` |         0 |       7.6 |         1 |       8.3 |
+| `1`    | `cp-sat`  | `-` |         0 |       0.0 |         4 |       2.7 |
+| `1`    | `chuffed` | `-` |        16 |       4.4 |         0 |       0.0 |
 
-## VTune UARCH Exploration
+### Cross-Module Kernel Benchmark
 
-### Kernel
+Reference from [kernel-bench.csv](kernel-bench.csv):
+
+| type     | name          | v   |   mean |   stdv |
+|:---------|:--------------|:----|-------:|-------:|
+| `scalar` | `F4  Q3M C4F` | `1` |     35 |    2.1 |
+| `scalar` | `F4  Q3M C3 ` | `1` |     36 |    2.5 |
+| `scalar` | `F5F Q3M C4F` | `1` |     37 |    1.7 |
+| `scalar` | `F4  Q3M C4M` | `1` |     37 |    2.7 |
+| `scalar` | `F3X Q1  C3 ` | `1` |     38 |    2.5 |
+| `scalar` | `F3X Q1  C4F` | `1` |     38 |    4.4 |
+| `scalar` | `F3X Q4F C3 ` | `1` |     38 |    1.7 |
+| `scalar` | `F3X Q4F C4F` | `1` |     39 |    2.5 |
+| `scalar` | `F3X Q1  C4M` | `1` |     39 |    2.7 |
+| `scalar` | `F4  Q3M C2X` | `1` |     39 |    2.2 |
+| `scalar` | `F3X Q4F C4M` | `1` |     39 |    1.7 |
+| `scalar` | `F3X Q4M C3 ` | `1` |     39 |    3.6 |
+| `scalar` | `F5F Q3M C3 ` | `1` |     39 |    3.6 |
+| `scalar` | `F5F Q3M C4M` | `1` |     39 |    2.0 |
+| `scalar` | `F3X Q4M C4F` | `1` |     40 |    1.8 |
+| `scalar` | `F3X Q4M C4M` | `1` |     40 |    1.5 |
+| `scalar` | `F5F Q3M C2X` | `1` |     41 |    3.1 |
+| `scalar` | `F2X Q1  C3 ` | `1` |     41 |    2.1 |
+| `scalar` | `F3X Q1  C2X` | `1` |     42 |    3.7 |
+| `scalar` | `F2X Q1  C4F` | `1` |     42 |    2.3 |
+| `scalar` | `F2X Q4F C4F` | `1` |     42 |    2.3 |
+| `scalar` | `F2X Q4F C3 ` | `1` |     42 |    2.3 |
+| `scalar` | `F2X Q1  C4M` | `1` |     42 |    2.5 |
+| `scalar` | `F3X Q4F C2X` | `1` |     42 |    2.3 |
+| `scalar` | `F2X Q4M C3 ` | `1` |     43 |    1.8 |
+| `scalar` | `F2X Q4F C4M` | `1` |     43 |    2.5 |
+| `scalar` | `F2X Q4M C4F` | `1` |     43 |    2.5 |
+| `scalar` | `F3X Q4M C2X` | `1` |     43 |    2.4 |
+| `scalar` | `F2X Q4M C4M` | `1` |     44 |    2.9 |
+| `scalar` | `F3X Q1  C5F` | `1` |     44 |    6.9 |
+| `scalar` | `F4  Q3M C5F` | `1` |     45 |    2.7 |
+| `scalar` | `F4  Q3M C1X` | `1` |     45 |    2.4 |
+| `scalar` | `F5F Q3M C5F` | `1` |     45 |    4.4 |
+| `scalar` | `F2X Q1  C2X` | `1` |     45 |    1.8 |
+| `scalar` | `F3X Q4F C5F` | `1` |     45 |    3.0 |
+| `scalar` | `F4  Q3M C2R` | `1` |     46 |    3.5 |
+| `scalar` | `F3X Q4M C5F` | `1` |     46 |    2.2 |
+| `scalar` | `F3X Q1  C1X` | `1` |     46 |    2.2 |
+| `scalar` | `F2X Q4F C2X` | `1` |     46 |    2.5 |
+| `scalar` | `F3X Q2X C4F` | `1` |     46 |    2.2 |
+| `scalar` | `F3X Q2X C3 ` | `1` |     46 |    2.8 |
+| `scalar` | `F5F Q3M C1X` | `1` |     47 |    1.9 |
+| `scalar` | `F2X Q4M C2X` | `1` |     47 |    1.9 |
+| `scalar` | `F3X Q2X C4M` | `1` |     47 |    2.4 |
+| `scalar` | `F3X Q4F C1X` | `1` |     47 |    1.7 |
+| `scalar` | `F5F Q3M C2R` | `1` |     48 |    2.8 |
+| `scalar` | `F3X Q4M C1X` | `1` |     48 |    1.5 |
+| `scalar` | `F2X Q1  C5F` | `1` |     49 |    2.7 |
+| `scalar` | `F3X Q1  C5M` | `1` |     49 |    3.8 |
+| `scalar` | `F2X Q4F C5F` | `1` |     49 |    3.2 |
+| `scalar` | `F2X Q4M C5F` | `1` |     49 |    2.4 |
+| `scalar` | `F2X Q1  C1X` | `1` |     50 |    1.9 |
+| `scalar` | `F2X Q2X C3 ` | `1` |     50 |    3.3 |
+| `scalar` | `F3X Q4F C5M` | `1` |     50 |    3.1 |
+| `scalar` | `F2X Q2X C4F` | `1` |     50 |    2.9 |
+| `scalar` | `F3X Q2X C2X` | `1` |     51 |    2.9 |
+| `scalar` | `F4  Q3M C5M` | `1` |     51 |    2.3 |
+| `scalar` | `F3X Q4M C5M` | `1` |     51 |    1.8 |
+| `scalar` | `F2X Q4F C1X` | `1` |     51 |    4.7 |
+| `scalar` | `F2X Q2X C4M` | `1` |     51 |    2.6 |
+| `scalar` | `F2X Q4M C1X` | `1` |     52 |    2.4 |
+| `scalar` | `F5F Q3M C5M` | `1` |     53 |    1.8 |
+| `scalar` | `F2X Q1  C5M` | `1` |     54 |    2.1 |
+| `object` | `F3X Q1  C1X` | `0` |     54 |    3.5 |
+| `scalar` | `F4  Q3M C1R` | `1` |     54 |    2.0 |
+| `scalar` | `F2X Q4F C5M` | `1` |     54 |    2.0 |
+| `scalar` | `F3X Q2X C5F` | `1` |     55 |    2.9 |
+| `scalar` | `F2X Q4M C5M` | `1` |     55 |    2.0 |
+| `scalar` | `F3X Q2R C3 ` | `1` |     55 |    2.3 |
+| `scalar` | `F2X Q2X C2X` | `1` |     55 |    2.3 |
+| `scalar` | `F3X Q2R C4F` | `1` |     56 |    2.1 |
+| `scalar` | `F3X Q2X C1X` | `1` |     56 |    1.8 |
+| `scalar` | `F5F Q3M C1R` | `1` |     56 |    2.9 |
+| `scalar` | `F3X Q2R C4M` | `1` |     57 |    1.9 |
+| `scalar` | `F3X Q1  C2R` | `1` |     57 |    1.7 |
+| `scalar` | `F3X Q4F C2R` | `1` |     58 |    1.5 |
+| `scalar` | `F2X Q2X C5F` | `1` |     58 |    2.5 |
+| `scalar` | `F2X Q2R C3 ` | `1` |     59 |    2.2 |
+| `object` | `F2X Q1  C1X` | `0` |     59 |    1.7 |
+| `scalar` | `F2X Q2R C4F` | `1` |     59 |    2.2 |
+| `scalar` | `F3X Q4M C2R` | `1` |     59 |    1.7 |
+| `scalar` | `F2X Q2X C1X` | `1` |     60 |    2.5 |
+| `scalar` | `F3X Q2X C5M` | `1` |     60 |    2.5 |
+| `scalar` | `F2X Q2R C4M` | `1` |     61 |    2.6 |
+| `scalar` | `F3X Q2R C2X` | `1` |     61 |    4.9 |
+| `scalar` | `F2X Q1  C2R` | `1` |     61 |    2.1 |
+| `scalar` | `F2X Q4F C2R` | `1` |     62 |    2.0 |
+| `scalar` | `F2X Q4M C2R` | `1` |     63 |    2.1 |
+| `scalar` | `F3X Q2R C5F` | `1` |     63 |    2.2 |
+| `scalar` | `F2X Q2R C2X` | `1` |     64 |    2.5 |
+| `scalar` | `F3X Q1  C1R` | `1` |     65 |    1.9 |
+| `scalar` | `F2X Q2X C5M` | `1` |     66 |    3.8 |
+| `scalar` | `F3X Q4F C1R` | `1` |     66 |    1.6 |
+| `scalar` | `F3X Q2R C1X` | `1` |     67 |    2.7 |
+| `scalar` | `F3X Q2X C2R` | `1` |     67 |    2.0 |
+| `scalar` | `F2X Q2R C5F` | `1` |     67 |    3.1 |
+| `scalar` | `F3X Q4M C1R` | `1` |     67 |    1.4 |
+| `scalar` | `F3X Q2R C5M` | `1` |     68 |    1.9 |
+| `scalar` | `F3R Q1  C4F` | `1` |     68 |    1.7 |
+| `scalar` | `F2X Q1  C1R` | `1` |     69 |    1.3 |
+| `scalar` | `F2X Q2R C1X` | `1` |     69 |    1.8 |
+| `scalar` | `F3R Q1  C3 ` | `1` |     69 |    2.5 |
+| `scalar` | `F3R Q1  C4M` | `1` |     69 |    2.1 |
+| `scalar` | `F3R Q4F C4F` | `1` |     69 |    2.0 |
+| `scalar` | `F3R Q4F C4M` | `1` |     70 |    1.8 |
+| `scalar` | `F3R Q4F C3 ` | `1` |     70 |    2.1 |
+| `scalar` | `F2X Q4F C1R` | `1` |     71 |    1.9 |
+| `scalar` | `F3R Q4M C3 ` | `1` |     71 |    1.1 |
+| `scalar` | `F2X Q2X C2R` | `1` |     71 |    2.3 |
+| `scalar` | `F2X Q4M C1R` | `1` |     71 |    2.2 |
+| `scalar` | `F3R Q4M C4F` | `1` |     72 |    1.6 |
+| `scalar` | `F3R Q1  C5F` | `1` |     72 |    2.0 |
+| `scalar` | `F3R Q4M C4M` | `1` |     73 |    2.2 |
+| `scalar` | `F3R Q4F C5F` | `1` |     73 |    2.3 |
+| `scalar` | `F3R Q1  C2X` | `1` |     73 |    1.9 |
+| `scalar` | `F2X Q2R C5M` | `1` |     73 |    1.8 |
+| `scalar` | `F3R Q4M C5F` | `1` |     74 |    1.6 |
+| `scalar` | `F3R Q4F C2X` | `1` |     74 |    1.7 |
+| `scalar` | `F3X Q2X C1R` | `1` |     76 |    2.1 |
+| `scalar` | `F3R Q4M C2X` | `1` |     77 |    1.7 |
+| `scalar` | `F3X Q2R C2R` | `1` |     77 |    3.4 |
+| `scalar` | `F3R Q1  C1X` | `1` |     77 |    1.9 |
+| `scalar` | `F3R Q3M C3 ` | `1` |     77 |    1.7 |
+| `scalar` | `F3R Q4F C1X` | `1` |     78 |    1.8 |
+| `scalar` | `F3R Q1  C5M` | `1` |     78 |    1.2 |
+| `object` | `F3X Q1  C1R` | `0` |     79 |    8.7 |
+| `scalar` | `F3R Q3M C4F` | `1` |     79 |    2.1 |
+| `scalar` | `F3R Q2X C4F` | `1` |     79 |    2.7 |
+| `scalar` | `F3R Q2X C3 ` | `1` |     79 |    1.8 |
+| `scalar` | `F3R Q4F C5M` | `1` |     79 |    1.7 |
+| `scalar` | `F3R Q2X C4M` | `1` |     79 |    3.0 |
+| `scalar` | `F2X Q2X C1R` | `1` |     79 |    2.0 |
+| `scalar` | `F2X Q2R C2R` | `1` |     80 |    2.2 |
+| `scalar` | `F3R Q4M C1X` | `1` |     80 |    1.9 |
+| `scalar` | `F3R Q4M C5M` | `1` |     81 |    2.3 |
+| `scalar` | `F3R Q3M C4M` | `1` |     81 |    1.7 |
+| `object` | `F2X Q1  C1R` | `0` |     82 |    2.6 |
+| `scalar` | `F3R Q2X C5F` | `1` |     82 |    1.9 |
+| `scalar` | `F2R Q1  C3 ` | `1` |     83 |    1.7 |
+| `scalar` | `F2R Q4F C3 ` | `1` |     83 |    1.4 |
+| `scalar` | `F2R Q1  C4M` | `1` |     84 |    1.5 |
+| `scalar` | `F2R Q4F C4F` | `1` |     84 |    1.4 |
+| `scalar` | `F3R Q3M C2X` | `1` |     84 |    1.4 |
+| `scalar` | `F2R Q1  C4F` | `1` |     84 |    1.9 |
+| `scalar` | `F3R Q3M C5F` | `1` |     84 |    2.1 |
+| `scalar` | `F2R Q4F C4M` | `1` |     85 |    1.4 |
+| `scalar` | `F3R Q2X C2X` | `1` |     85 |    2.1 |
+| `scalar` | `F3X Q2R C1R` | `1` |     85 |    1.9 |
+| `scalar` | `F2R Q4M C4F` | `1` |     86 |    1.4 |
+| `object` | `F3R Q1  C1X` | `0` |     86 |    2.4 |
+| `scalar` | `F2R Q4M C3 ` | `1` |     86 |    1.6 |
+| `scalar` | `F5M Q3M C3 ` | `1` |     87 |    1.2 |
+| `scalar` | `F2R Q1  C5F` | `1` |     87 |    1.6 |
+| `scalar` | `F2R Q4M C4M` | `1` |     87 |    1.3 |
+| `scalar` | `F3R Q2X C1X` | `1` |     87 |    1.8 |
+| `scalar` | `F2R Q4F C5F` | `1` |     87 |    1.5 |
+| `scalar` | `F3R Q3M C1X` | `1` |     88 |    2.3 |
+| `scalar` | `F2X Q2R C1R` | `1` |     88 |    1.5 |
+| `scalar` | `F2R Q1  C2X` | `1` |     88 |    1.7 |
+| `scalar` | `F5M Q3M C4F` | `1` |     88 |    1.1 |
+| `scalar` | `F5M Q3M C4M` | `1` |     88 |    1.2 |
+| `scalar` | `F2R Q4M C5F` | `1` |     88 |    1.8 |
+| `scalar` | `F3R Q2R C4F` | `1` |     88 |    1.6 |
+| `scalar` | `F3R Q2R C3 ` | `1` |     89 |    2.1 |
+| `scalar` | `F2R Q4F C2X` | `1` |     89 |    2.0 |
+| `scalar` | `F3R Q2R C4M` | `1` |     89 |    2.0 |
+| `scalar` | `F3R Q2X C5M` | `1` |     90 |    1.5 |
+| `scalar` | `F2R Q4M C2X` | `1` |     91 |    1.4 |
+| `scalar` | `F2R Q1  C1X` | `1` |     91 |    1.6 |
+| `scalar` | `F5M Q3M C2X` | `1` |     92 |    1.0 |
+| `scalar` | `F3R Q3M C5M` | `1` |     92 |    1.5 |
+| `scalar` | `F2R Q4F C1X` | `1` |     92 |    1.9 |
+| `scalar` | `F3R Q1  C2R` | `1` |     92 |    1.5 |
+| `scalar` | `F3R Q2R C5F` | `1` |     92 |    1.7 |
+| `scalar` | `F2R Q3M C4F` | `1` |     93 |    1.5 |
+| `scalar` | `F2R Q2X C3 ` | `1` |     93 |    2.2 |
+| `scalar` | `F2R Q2X C4F` | `1` |     93 |    1.6 |
+| `scalar` | `F2R Q2X C4M` | `1` |     93 |    1.1 |
+| `scalar` | `F3R Q4F C2R` | `1` |     93 |    2.2 |
+| `scalar` | `F2R Q1  C5M` | `1` |     94 |    1.7 |
+| `scalar` | `F2R Q4M C1X` | `1` |     94 |    1.2 |
+| `scalar` | `F5M Q3M C5F` | `1` |     94 |    1.9 |
+| `scalar` | `F2R Q3M C3 ` | `1` |     94 |    2.2 |
+| `scalar` | `F3R Q2R C2X` | `1` |     95 |    2.1 |
+| `scalar` | `F2R Q4F C5M` | `1` |     95 |    1.4 |
+| `scalar` | `F3R Q4M C2R` | `1` |     95 |    1.9 |
+| `scalar` | `F2R Q3M C4M` | `1` |     95 |    1.1 |
+| `scalar` | `F2R Q4M C5M` | `1` |     96 |    1.6 |
+| `scalar` | `F5M Q3M C2R` | `1` |     96 |    1.5 |
+| `scalar` | `F2R Q2X C5F` | `1` |     97 |    1.6 |
+| `scalar` | `F5M Q3M C1X` | `1` |     97 |    1.9 |
+| `scalar` | `F3R Q2R C1X` | `1` |     97 |    1.6 |
+| `scalar` | `F2R Q3M C5F` | `1` |     99 |    1.8 |
+| `scalar` | `F3R Q1  C1R` | `1` |     99 |    1.9 |
+| `scalar` | `F2R Q2X C2X` | `1` |     99 |    2.3 |
+| `scalar` | `F2R Q3M C2X` | `1` |     99 |    1.3 |
+| `scalar` | `F3R Q2R C5M` | `1` |    100 |    1.6 |
+| `scalar` | `F3R Q4F C1R` | `1` |    101 |    1.3 |
+| `scalar` | `F3R Q3M C2R` | `1` |    101 |    1.4 |
+| `scalar` | `F2R Q2X C1X` | `1` |    101 |    1.9 |
+| `scalar` | `F5M Q3M C5M` | `1` |    101 |    3.1 |
+| `object` | `F2R Q1  C1X` | `0` |    102 |    1.7 |
+| `scalar` | `F3R Q4M C1R` | `1` |    102 |    1.4 |
+| `scalar` | `F2R Q2R C4F` | `1` |    102 |    1.8 |
+| `scalar` | `F2R Q2R C4M` | `1` |    103 |    1.3 |
+| `scalar` | `F3R Q2X C2R` | `1` |    103 |    1.8 |
+| `scalar` | `F2R Q2R C3 ` | `1` |    103 |    2.3 |
+| `scalar` | `F2R Q3M C1X` | `1` |    104 |    1.3 |
+| `scalar` | `F2R Q1  C2R` | `1` |    106 |    0.7 |
+| `scalar` | `F2R Q2X C5M` | `1` |    106 |    1.9 |
+| `scalar` | `F2R Q2R C5F` | `1` |    107 |    1.1 |
+| `scalar` | `F5M Q3M C1R` | `1` |    107 |    2.4 |
+| `scalar` | `F2R Q3M C5M` | `1` |    107 |    1.8 |
+| `scalar` | `F2R Q4F C2R` | `1` |    107 |    1.6 |
+| `scalar` | `F3R Q3M C1R` | `1` |    108 |    1.2 |
+| `scalar` | `F2R Q4M C2R` | `1` |    109 |    1.4 |
+| `scalar` | `F2R Q2R C2X` | `1` |    109 |    1.7 |
+| `scalar` | `F3R Q2X C1R` | `1` |    109 |    1.7 |
+| `scalar` | `F3X Q3M C5F` | `1` |    111 |    1.1 |
+| `scalar` | `F3R Q2R C2R` | `1` |    112 |    1.7 |
+| `object` | `F3R Q1  C1R` | `0` |    113 |    6.8 |
+| `scalar` | `F2R Q2R C1X` | `1` |    113 |    2.7 |
+| `scalar` | `F3X Q3M C3 ` | `1` |    113 |    1.2 |
+| `scalar` | `F2R Q1  C1R` | `1` |    113 |    1.3 |
+| `scalar` | `F3X Q3M C4F` | `1` |    115 |    1.4 |
+| `scalar` | `F2R Q2R C5M` | `1` |    115 |    1.2 |
+| `scalar` | `F2R Q3M C2R` | `1` |    116 |    1.8 |
+| `scalar` | `F2R Q4F C1R` | `1` |    116 |    1.4 |
+| `scalar` | `F3X Q3M C4M` | `1` |    116 |    1.1 |
+| `scalar` | `F2R Q4M C1R` | `1` |    117 |    1.3 |
+| `scalar` | `F2R Q2X C2R` | `1` |    118 |    1.4 |
+| `scalar` | `F2X Q3M C5F` | `1` |    119 |    1.7 |
+| `scalar` | `F3R Q2R C1R` | `1` |    119 |    1.5 |
+| `scalar` | `F2X Q3M C3 ` | `1` |    122 |    1.1 |
+| `scalar` | `F3X Q3M C5M` | `1` |    122 |    1.5 |
+| `scalar` | `F2X Q3M C4M` | `1` |    125 |    1.8 |
+| `scalar` | `F2R Q3M C1R` | `1` |    125 |    1.0 |
+| `scalar` | `F3X Q3M C2X` | `1` |    125 |    1.0 |
+| `scalar` | `F2R Q2X C1R` | `1` |    125 |    1.9 |
+| `scalar` | `F2R Q2R C2R` | `1` |    127 |    1.7 |
+| `scalar` | `F2X Q3M C4F` | `1` |    127 |    1.8 |
+| `scalar` | `F2X Q3M C5M` | `1` |    132 |    1.6 |
+| `scalar` | `F3X Q3M C1X` | `1` |    133 |    0.7 |
+| `object` | `F2R Q1  C1R` | `0` |    135 |    2.0 |
+| `scalar` | `F2R Q2R C1R` | `1` |    135 |    1.7 |
+| `scalar` | `F2X Q3M C2X` | `1` |    135 |    4.3 |
+| `scalar` | `F2X Q3M C1X` | `1` |    142 |    1.6 |
+| `scalar` | `F3X Q3M C2R` | `1` |    163 |    1.1 |
+| `scalar` | `F3X Q3M C1R` | `1` |    175 |    0.9 |
+| `scalar` | `F2X Q3M C2R` | `1` |    176 |    1.2 |
+| `scalar` | `F2X Q3M C1R` | `1` |    184 |    0.7 |
+| `scalar` | `F5F Q1  C5F` | `1` |    211 |    1.4 |
+| `scalar` | `F5F Q1  C3 ` | `1` |    217 |    0.9 |
+| `scalar` | `F1X Q3M C4F` | `1` |    219 |    0.9 |
+| `scalar` | `F1X Q3M C4M` | `1` |    220 |    1.3 |
+| `scalar` | `F1X Q3M C3 ` | `1` |    221 |    1.6 |
+| `scalar` | `F5F Q1  C4F` | `1` |    224 |    1.5 |
+| `scalar` | `F1X Q3M C2X` | `1` |    225 |    2.2 |
+| `scalar` | `F1X Q3M C5F` | `1` |    226 |    1.0 |
+| `scalar` | `F1X Q3M C2R` | `1` |    231 |    0.6 |
+| `scalar` | `F5F Q4F C5F` | `1` |    231 |    1.9 |
+| `scalar` | `F1X Q3M C5M` | `1` |    232 |    0.8 |
+| `scalar` | `F1X Q3M C1X` | `1` |    232 |    0.8 |
+| `scalar` | `F5F Q4F C3 ` | `1` |    233 |    1.6 |
+| `scalar` | `F5F Q4M C5F` | `1` |    233 |    0.7 |
+| `scalar` | `F5F Q4F C4F` | `1` |    239 |    1.3 |
+| `scalar` | `F1X Q3M C1R` | `1` |    245 |    1.3 |
+| `scalar` | `F5F Q1  C5M` | `1` |    245 |    1.1 |
+| `scalar` | `F5F Q1  C4M` | `1` |    248 |    1.1 |
+| `scalar` | `F4  Q1  C5F` | `1` |    251 |    0.4 |
+| `scalar` | `F5F Q4M C4F` | `1` |    252 |    1.4 |
+| `scalar` | `F5F Q4M C3 ` | `1` |    254 |    0.9 |
+| `scalar` | `F5F Q4F C4M` | `1` |    255 |    0.8 |
+| `scalar` | `F4  Q1  C3 ` | `1` |    259 |    2.2 |
+| `scalar` | `F4  Q1  C4F` | `1` |    262 |    0.8 |
+| `scalar` | `F5F Q4F C5M` | `1` |    263 |    0.7 |
+| `scalar` | `F4  Q4F C5F` | `1` |    263 |    1.9 |
+| `scalar` | `F4  Q4F C3 ` | `1` |    265 |    0.6 |
+| `scalar` | `F4  Q4F C4F` | `1` |    266 |    1.0 |
+| `scalar` | `F5F Q4M C4M` | `1` |    266 |    1.1 |
+| `scalar` | `F4  Q1  C4M` | `1` |    267 |    0.5 |
+| `scalar` | `F5F Q1  C2X` | `1` |    269 |    0.8 |
+| `scalar` | `F4  Q4M C5F` | `1` |    270 |    1.6 |
+| `scalar` | `F4  Q4M C3 ` | `1` |    272 |    0.8 |
+| `scalar` | `F5F Q4M C5M` | `1` |    272 |    1.1 |
+| `scalar` | `F4  Q1  C5M` | `1` |    275 |    1.0 |
+| `scalar` | `F4  Q4F C4M` | `1` |    275 |    0.8 |
+| `scalar` | `F4  Q4M C4F` | `1` |    278 |    0.4 |
+| `scalar` | `F4  Q4F C5M` | `1` |    286 |    0.7 |
+| `scalar` | `F5F Q4F C2X` | `1` |    287 |    0.9 |
+| `scalar` | `F4  Q4M C4M` | `1` |    289 |    1.4 |
+| `scalar` | `F4  Q1  C2X` | `1` |    292 |    0.6 |
+| `scalar` | `F4  Q4M C5M` | `1` |    294 |    0.9 |
+| `scalar` | `F5F Q4M C2X` | `1` |    303 |    1.3 |
+| `scalar` | `F5F Q1  C1X` | `1` |    303 |    1.3 |
+| `scalar` | `F4  Q4F C2X` | `1` |    306 |    1.2 |
+| `scalar` | `F5M Q1  C5F` | `1` |    307 |    0.7 |
+| `scalar` | `F4  Q2X C5F` | `1` |    309 |    1.7 |
+| `scalar` | `F4  Q1  C1X` | `1` |    310 |    0.5 |
+| `scalar` | `F5F Q2X C5F` | `1` |    310 |    1.0 |
+| `scalar` | `F4  Q2X C3 ` | `1` |    311 |    1.5 |
+| `scalar` | `F5F Q4F C1X` | `1` |    315 |    0.5 |
+| `scalar` | `F4  Q4M C2X` | `1` |    316 |    1.0 |
+| `scalar` | `F4  Q4F C1X` | `1` |    316 |    0.8 |
+| `scalar` | `F4  Q2X C4M` | `1` |    320 |    0.5 |
+| `scalar` | `F4  Q2X C4F` | `1` |    321 |    2.7 |
+| `scalar` | `F5M Q4F C5F` | `1` |    323 |    0.7 |
+| `scalar` | `F5F Q2X C3 ` | `1` |    324 |    2.9 |
+| `scalar` | `F4  Q4M C1X` | `1` |    330 |    0.7 |
+| `scalar` | `F5M Q1  C4F` | `1` |    330 |    0.6 |
+| `scalar` | `F5M Q1  C3 ` | `1` |    331 |    1.2 |
+| `scalar` | `F5F Q4M C1X` | `1` |    333 |    1.2 |
+| `scalar` | `F5M Q4M C5F` | `1` |    333 |    1.2 |
+| `object` | `F4  Q1  C1X` | `0` |    334 |    1.3 |
+| `scalar` | `F4  Q2X C5M` | `1` |    334 |    1.0 |
+| `scalar` | `F5F Q2X C4M` | `1` |    337 |    1.2 |
+| `scalar` | `F5F Q2X C4F` | `1` |    337 |    2.2 |
+| `scalar` | `F5M Q1  C4M` | `1` |    338 |    0.7 |
+| `scalar` | `F5M Q4F C3 ` | `1` |    339 |    0.5 |
+| `scalar` | `F5M Q4F C4F` | `1` |    341 |    0.7 |
+| `scalar` | `F5M Q1  C5M` | `1` |    342 |    0.5 |
+| `scalar` | `F5F Q2X C5M` | `1` |    347 |    1.6 |
+| `scalar` | `F5M Q4M C3 ` | `1` |    350 |    0.6 |
+| `scalar` | `F5M Q4F C5M` | `1` |    355 |    0.9 |
+| `scalar` | `F4  Q2X C2X` | `1` |    357 |    0.7 |
+| `scalar` | `F5M Q4M C4F` | `1` |    357 |    0.3 |
+| `scalar` | `F5M Q4F C4M` | `1` |    358 |    0.9 |
+| `scalar` | `F5M Q4M C5M` | `1` |    366 |    0.4 |
+| `scalar` | `F5M Q4M C4M` | `1` |    368 |    1.1 |
+| `scalar` | `F4  Q2X C1X` | `1` |    372 |    1.2 |
+| `scalar` | `F5M Q1  C2X` | `1` |    378 |    0.9 |
+| `scalar` | `F5M Q4F C2X` | `1` |    386 |    1.1 |
+| `scalar` | `F5F Q2X C2X` | `1` |    393 |    2.8 |
+| `scalar` | `F4  Q2R C5F` | `1` |    401 |    0.8 |
+| `scalar` | `F5M Q4M C2X` | `1` |    405 |    0.8 |
+| `scalar` | `F4  Q2R C4F` | `1` |    406 |    0.7 |
+| `scalar` | `F4  Q2R C3 ` | `1` |    410 |    1.1 |
+| `scalar` | `F4  Q2R C4M` | `1` |    414 |    0.5 |
+| `scalar` | `F5M Q2X C5F` | `1` |    414 |    0.6 |
+| `scalar` | `F4  Q2R C5M` | `1` |    419 |    0.2 |
+| `scalar` | `F5M Q1  C1X` | `1` |    421 |    1.2 |
+| `scalar` | `F5M Q4F C1X` | `1` |    433 |    1.0 |
+| `scalar` | `F5M Q2X C3 ` | `1` |    434 |    1.7 |
+| `scalar` | `F5F Q2X C1X` | `1` |    437 |    1.6 |
+| `scalar` | `F5M Q2X C4F` | `1` |    439 |    1.0 |
+| `scalar` | `F5M Q2X C5M` | `1` |    440 |    1.1 |
+| `scalar` | `F5M Q4M C1X` | `1` |    447 |    0.6 |
+| `scalar` | `F4  Q1  C2R` | `1` |    454 |    0.8 |
+| `scalar` | `F5M Q2X C4M` | `1` |    455 |    2.8 |
+| `scalar` | `F4  Q4F C2R` | `1` |    457 |    0.6 |
+| `scalar` | `F4  Q2R C2X` | `1` |    461 |    1.8 |
+| `scalar` | `F5F Q1  C2R` | `1` |    463 |    0.9 |
+| `scalar` | `F5F Q2R C5F` | `1` |    465 |    1.1 |
+| `scalar` | `F4  Q4M C2R` | `1` |    469 |    0.9 |
+| `scalar` | `F4  Q2R C1X` | `1` |    471 |    0.8 |
+| `scalar` | `F5F Q4F C2R` | `1` |    478 |    1.3 |
+| `scalar` | `F4  Q1  C1R` | `1` |    482 |    0.8 |
+| `scalar` | `F5F Q2R C3 ` | `1` |    483 |    0.4 |
+| `scalar` | `F5F Q2R C4F` | `1` |    483 |    0.9 |
+| `scalar` | `F5F Q4M C2R` | `1` |    494 |    1.1 |
+| `scalar` | `F4  Q4F C1R` | `1` |    494 |    0.4 |
+| `scalar` | `F5F Q2R C4M` | `1` |    496 |    1.4 |
+| `scalar` | `F5F Q2R C5M` | `1` |    500 |    0.9 |
+| `scalar` | `F4  Q4M C1R` | `1` |    503 |    0.7 |
+| `scalar` | `F5M Q2X C2X` | `1` |    509 |    1.7 |
+| `scalar` | `F4  Q2X C2R` | `1` |    510 |    0.6 |
+| `scalar` | `F5F Q1  C1R` | `1` |    539 |    1.6 |
+| `object` | `F4  Q1  C1R` | `0` |    541 |    1.3 |
+| `scalar` | `F4  Q2X C1R` | `1` |    547 |    1.1 |
+| `scalar` | `F5M Q2X C1X` | `1` |    550 |    1.5 |
+| `scalar` | `F5F Q4F C1R` | `1` |    554 |    0.8 |
+| `scalar` | `F5F Q4M C1R` | `1` |    566 |    1.0 |
+| `scalar` | `F5M Q1  C2R` | `1` |    568 |    0.6 |
+| `scalar` | `F5M Q2R C5F` | `1` |    573 |    0.6 |
+| `scalar` | `F5F Q2R C2X` | `1` |    573 |    1.1 |
+| `scalar` | `F5M Q4F C2R` | `1` |    579 |    0.9 |
+| `scalar` | `F5M Q4M C2R` | `1` |    593 |    0.6 |
+| `scalar` | `F4  Q2R C2R` | `1` |    595 |    0.5 |
+| `scalar` | `F5M Q2R C3 ` | `1` |    598 |    0.7 |
+| `scalar` | `F5M Q2R C4F` | `1` |    601 |    0.8 |
+| `scalar` | `F5M Q2R C5M` | `1` |    602 |    0.1 |
+| `scalar` | `F5F Q2R C1X` | `1` |    604 |    0.5 |
+| `scalar` | `F5M Q2R C4M` | `1` |    609 |    0.6 |
+| `scalar` | `F5F Q2X C2R` | `1` |    613 |    1.0 |
+| `scalar` | `F5M Q1  C1R` | `1` |    639 |    0.3 |
+| `scalar` | `F4  Q2R C1R` | `1` |    641 |    0.6 |
+| `scalar` | `F5M Q4F C1R` | `1` |    658 |    0.8 |
+| `scalar` | `F5M Q4M C1R` | `1` |    670 |    1.0 |
+| `scalar` | `F5M Q2R C2X` | `1` |    689 |    1.0 |
+| `scalar` | `F5F Q2X C1R` | `1` |    690 |    0.6 |
+| `scalar` | `F5M Q2X C2R` | `1` |    703 |    0.6 |
+| `scalar` | `F5M Q2R C1X` | `1` |    728 |    2.0 |
+| `scalar` | `F5F Q2R C2R` | `1` |    776 |    1.0 |
+| `scalar` | `F5M Q2X C1R` | `1` |    802 |    0.9 |
+| `scalar` | `F1R Q3M C3 ` | `1` |    833 |    0.5 |
+| `scalar` | `F1R Q3M C4M` | `1` |    834 |    0.6 |
+| `scalar` | `F1R Q3M C5F` | `1` |    836 |    0.4 |
+| `scalar` | `F1R Q3M C4F` | `1` |    838 |    1.3 |
+| `scalar` | `F1R Q3M C2X` | `1` |    838 |    0.9 |
+| `scalar` | `F1R Q3M C5M` | `1` |    845 |    0.2 |
+| `scalar` | `F1R Q3M C2R` | `1` |    851 |    0.9 |
+| `scalar` | `F5F Q2R C1R` | `1` |    857 |    0.8 |
+| `scalar` | `F1R Q3M C1X` | `1` |    858 |    0.4 |
+| `scalar` | `F1R Q3M C1R` | `1` |    868 |    0.9 |
+| `scalar` | `F5M Q2R C2R` | `1` |    874 |    0.5 |
+| `scalar` | `F5M Q2R C1R` | `1` |    970 |    0.6 |
+| `scalar` | `F1X Q1  C3 ` | `1` |   1416 |    0.3 |
+| `scalar` | `F1X Q1  C5F` | `1` |   1421 |    0.4 |
+| `scalar` | `F1X Q1  C4F` | `1` |   1432 |    0.3 |
+| `scalar` | `F1X Q4F C5F` | `1` |   1442 |    0.2 |
+| `scalar` | `F1X Q4M C5F` | `1` |   1444 |    0.1 |
+| `scalar` | `F1X Q4F C3 ` | `1` |   1449 |    0.3 |
+| `scalar` | `F1X Q1  C4M` | `1` |   1452 |    0.6 |
+| `scalar` | `F1X Q4F C4F` | `1` |   1453 |    0.8 |
+| `scalar` | `F1X Q4M C4F` | `1` |   1456 |    0.7 |
+| `scalar` | `F1X Q1  C5M` | `1` |   1457 |    0.5 |
+| `scalar` | `F1X Q4M C3 ` | `1` |   1470 |    0.6 |
+| `scalar` | `F1X Q4F C4M` | `1` |   1476 |    0.2 |
+| `scalar` | `F1X Q4M C4M` | `1` |   1480 |    0.2 |
+| `scalar` | `F1X Q4M C5M` | `1` |   1482 |    0.4 |
+| `scalar` | `F1X Q4F C5M` | `1` |   1485 |    1.2 |
+| `scalar` | `F1X Q4F C2X` | `1` |   1508 |    0.8 |
+| `scalar` | `F1X Q1  C2X` | `1` |   1513 |    0.9 |
+| `scalar` | `F1X Q4M C2X` | `1` |   1531 |    0.5 |
+| `scalar` | `F1X Q1  C1X` | `1` |   1546 |    0.4 |
+| `scalar` | `F1X Q2X C5F` | `1` |   1556 |    0.5 |
+| `scalar` | `F1X Q4F C1X` | `1` |   1564 |    0.6 |
+| `scalar` | `F1X Q4M C1X` | `1` |   1581 |    0.4 |
+| `scalar` | `F1X Q2X C4F` | `1` |   1589 |    0.5 |
+| `scalar` | `F1X Q2X C3 ` | `1` |   1592 |    1.2 |
+| `scalar` | `F1X Q2X C4M` | `1` |   1594 |    0.3 |
+| `scalar` | `F1X Q2X C5M` | `1` |   1611 |    0.7 |
+| `scalar` | `F1X Q2X C2X` | `1` |   1653 |    0.8 |
+| `scalar` | `F1X Q1  C2R` | `1` |   1699 |    0.4 |
+| `scalar` | `F1X Q2X C1X` | `1` |   1708 |    0.5 |
+| `scalar` | `F1X Q2R C5F` | `1` |   1714 |    0.2 |
+| `scalar` | `F1X Q4F C2R` | `1` |   1727 |    0.6 |
+| `scalar` | `F1X Q4M C2R` | `1` |   1731 |    0.3 |
+| `scalar` | `F1X Q2R C3 ` | `1` |   1739 |    0.3 |
+| `scalar` | `F1X Q2R C4F` | `1` |   1747 |    0.7 |
+| `scalar` | `F1X Q2R C5M` | `1` |   1757 |    0.5 |
+| `scalar` | `F1X Q2R C4M` | `1` |   1758 |    0.4 |
+| `scalar` | `F1X Q1  C1R` | `1` |   1782 |    0.3 |
+| `scalar` | `F1X Q4F C1R` | `1` |   1786 |    0.3 |
+| `scalar` | `F1X Q4M C1R` | `1` |   1808 |    0.5 |
+| `scalar` | `F1X Q2R C2X` | `1` |   1844 |    0.3 |
+| `scalar` | `F1X Q2R C1X` | `1` |   1889 |    0.4 |
+| `scalar` | `F1X Q2X C2R` | `1` |   1956 |    0.5 |
+| `scalar` | `F1X Q2X C1R` | `1` |   1972 |    0.3 |
+| `scalar` | `F1X Q2R C2R` | `1` |   2042 |    0.5 |
+| `object` | `F1X Q1  C1X` | `0` |   2094 |    3.5 |
+| `scalar` | `F1X Q2R C1R` | `1` |   2156 |    0.4 |
+| `object` | `F1X Q1  C1R` | `0` |   2497 |    2.8 |
+| `scalar` | `F1R Q4F C5F` | `1` |   5455 |    0.1 |
+| `scalar` | `F1R Q4M C5F` | `1` |   5486 |    0.5 |
+| `scalar` | `F1R Q4F C3 ` | `1` |   5492 |    0.1 |
+| `scalar` | `F1R Q4F C4M` | `1` |   5505 |    0.4 |
+| `scalar` | `F1R Q1  C5M` | `1` |   5507 |    0.3 |
+| `scalar` | `F1R Q4F C5M` | `1` |   5520 |    0.2 |
+| `scalar` | `F1R Q4M C3 ` | `1` |   5529 |    0.4 |
+| `scalar` | `F1R Q4F C4F` | `1` |   5536 |    0.8 |
+| `scalar` | `F1R Q4M C4M` | `1` |   5536 |    0.3 |
+| `scalar` | `F1R Q4M C4F` | `1` |   5538 |    0.3 |
+| `scalar` | `F1R Q4M C5M` | `1` |   5548 |    0.1 |
+| `scalar` | `F1R Q1  C5F` | `1` |   5614 |    1.9 |
+| `scalar` | `F1R Q1  C3 ` | `1` |   5631 |    0.6 |
+| `scalar` | `F1R Q4F C2X` | `1` |   5641 |    0.1 |
+| `scalar` | `F1R Q1  C4F` | `1` |   5668 |    1.5 |
+| `scalar` | `F1R Q2X C5F` | `1` |   5678 |    0.7 |
+| `scalar` | `F1R Q4M C2X` | `1` |   5683 |    0.2 |
+| `scalar` | `F1R Q1  C2X` | `1` |   5688 |    0.7 |
+| `scalar` | `F1R Q1  C4M` | `1` |   5701 |    0.5 |
+| `scalar` | `F1R Q4F C1X` | `1` |   5716 |    0.4 |
+| `scalar` | `F1R Q4M C1X` | `1` |   5717 |    0.5 |
+| `scalar` | `F1R Q2X C5M` | `1` |   5728 |    0.3 |
+| `scalar` | `F1R Q2X C3 ` | `1` |   5758 |    0.2 |
+| `scalar` | `F1R Q2X C4F` | `1` |   5758 |    0.2 |
+| `scalar` | `F1R Q2X C4M` | `1` |   5788 |    0.3 |
+| `scalar` | `F1R Q1  C1X` | `1` |   5867 |    1.5 |
+| `scalar` | `F1R Q2R C5F` | `1` |   5870 |    0.3 |
+| `scalar` | `F1R Q2X C2X` | `1` |   5906 |    0.7 |
+| `scalar` | `F1R Q4F C2R` | `1` |   5940 |    0.4 |
+| `scalar` | `F1R Q4M C2R` | `1` |   5941 |    0.3 |
+| `scalar` | `F1R Q2X C1X` | `1` |   5952 |    0.3 |
+| `scalar` | `F1R Q2R C3 ` | `1` |   5967 |    0.5 |
+| `scalar` | `F1R Q2R C4M` | `1` |   5992 |    0.7 |
+| `scalar` | `F1R Q4F C1R` | `1` |   6023 |    0.3 |
+| `scalar` | `F1R Q2R C4F` | `1` |   6035 |    1.4 |
+| `scalar` | `F1R Q4M C1R` | `1` |   6050 |    0.3 |
+| `scalar` | `F1R Q1  C2R` | `1` |   6083 |    1.3 |
+| `scalar` | `F1R Q2R C5M` | `1` |   6095 |    2.3 |
+| `scalar` | `F1R Q2R C2X` | `1` |   6132 |    0.3 |
+| `scalar` | `F1R Q2R C1X` | `1` |   6178 |    0.3 |
+| `scalar` | `F1R Q2X C1R` | `1` |   6269 |    0.3 |
+| `scalar` | `F1R Q1  C1R` | `1` |   6291 |    0.4 |
+| `scalar` | `F1R Q2R C2R` | `1` |   6393 |    0.4 |
+| `scalar` | `F1R Q2X C2R` | `1` |   6413 |    3.2 |
+| `scalar` | `F1R Q2R C1R` | `1` |   6463 |    0.4 |
+| `object` | `F1R Q1  C1X` | `0` |   8927 |    0.7 |
+| `object` | `F1R Q1  C1R` | `0` |   9256 |    1.7 |
+
+### Microarchitecture Exploration
+
+Performed using VTune on a machine with:
+- 3.50 GHz i5-13600F CPU
+- 3600 MHz DDR4 Memory
+
+### kernel-0
 
 ```
-Elapsed Time:                          3.722s
-Clockticks:                   18,298,078,000
-Instructions Retired:         75,292,206,000
-CPI Rate:                              0.243
-MUX Reliability:                       0.967
+Elapsed Time                           60.00s
+Clockticks                    308,635,502,000
+Instructions Retired        1,228,686,064,000
+CPI Rate                                 0.3%
+MUX Reliability                         93.7%
 
-Retiring:                              69.0%
+Retiring                                56.3%
 
-Front-End Bound:                        7.0%
-  Front-End Latency:                    2.5%
-  Front-End Bandwidth:                  4.5%
+Front-End Bound                         14.9%
+  Front-End Latency                      4.8%
+  Front-End Bandwidth                   10.1%
 
-Bad Speculation:                        7.3%
-  Branch Mispredict:                   10.1%
+Bad Speculation                         12.9%
+  Branch Mispredict                     11.7%
 
-Back-End Bound:                        16.7%
-  Memory Bound:                         6.6%
-    L1 Bound:                           0.0%
-    L2 Bound:                           4.5%
-    L3 Bound:                           0.3%
-    DRAM Bound:                         6.5%
-    Store Bound:                        0.1%
-  Core Bound:                          10.1%
-    Divider:                            0.0%
-    Serializing Operations:             2.3%
-    Port Utilization:                  19.1%
-```
-
-### Gecode
+Back-End Bound                          15.9%
+  Memory Bound                           9.7%
+    L1 Bound                             2.8%
+    L2 Bound                             1.2%
+    L3 Bound                             0.7%
+    DRAM Bound                           9.1%
+    Store Bound                          0.4%
+  Core Bound                             6.2%
+    Divider                              0.0%
+    Serializing Operations               2.7%
+    Port Utilization                    18.6%
 
 ```
-Elapsed Time:                          2.126s
-Clockticks:                   11,397,428,000
-Instructions Retired:         23,703,296,000
-CPI Rate:                              0.481
-MUX Reliability:                       0.906
 
-Retiring:                              47.4%
-
-Front-End Bound:                       42.7%
-  Front-End Latency:                   18.9%
-  Front-End Bandwidth:                 23.8%
-
-Bad Speculation:                        0.0%
-  Branch Mispredict:                    8.9%
-
-Back-End Bound:                        35.4%
-  Memory Bound:                        17.7%
-    L1 Bound:                          12.8%
-    L2 Bound:                           2.1%
-    L3 Bound:                           3.6%
-    DRAM Bound:                         5.7%
-    Store Bound:                        0.5%
-  Core Bound:                          17.7%
-    Divider:                            0.7%
-    Serializing Operations:            18.2%
-    Port Utilization:                  23.9%
-```
-
-### Chuffed
+### gecode
 
 ```
-Elapsed Time:                         13.981s
-Clockticks:                   68,531,316,000
-Instructions Retired:        167,034,164,000
-CPI Rate:                              0.410
-MUX Reliability:                       0.980
+Elapsed Time                           60.02s
+Clockticks                    777,072,588,000
+Instructions Retired        1,435,048,692,000
+CPI Rate                                 0.5%
+MUX Reliability                         98.4%
 
-Retiring:                              41.7%
+Retiring                                34.9%
 
-Front-End Bound:                       22.9%
-  Front-End Latency:                   11.4%
-  Front-End Bandwidth:                 11.5%
+Front-End Bound                         24.7%
+  Front-End Latency                     13.4%
+  Front-End Bandwidth                   11.3%
 
-Bad Speculation:                        6.9%
-  Branch Mispredict:                    4.7%
+Bad Speculation                          5.4%
+  Branch Mispredict                      6.6%
 
-Back-End Bound:                        28.6%
-  Memory Bound:                        19.4%
-    L1 Bound:                          14.5%
-    L2 Bound:                           0.5%
-    L3 Bound:                           1.7%
-    DRAM Bound:                        10.0%
-    Store Bound:                        1.7%
-  Core Bound:                           9.1%
+Back-End Bound                          35.0%
+  Memory Bound                          16.8%
+    L1 Bound                            15.4%
+    L2 Bound                             0.9%
+    L3 Bound                             2.4%
+    DRAM Bound                           5.8%
+    Store Bound                          0.5%
+  Core Bound                            18.1%
+    Divider                              0.4%
+    Serializing Operations              22.8%
+    Port Utilization                    19.7%
+
 ```
 
-### CP-Sat
+### chuffed
 
 ```
-Elapsed Time:                          4.853s
-Clockticks:                   23,818,598,000
-Instructions Retired:         62,182,718,000
-CPI Rate:                              0.383
-MUX Reliability:                       0.939
+Elapsed Time                         59.99s
+Clockticks                  304,907,404,000
+Instructions Retired        684,436,166,000
+CPI Rate                               0.4%
+MUX Reliability                       99.3%
 
-Retiring:                              41.9%
+Retiring                              40.2%
 
-Front-End Bound:                       30.3%
-  Front-End Latency:                   18.8%
-  Front-End Bandwidth:                 11.5%
+Front-End Bound                       22.0%
+  Front-End Latency                   10.3%
+  Front-End Bandwidth                 11.7%
 
-Bad Speculation:                        7.4%
-  Branch Mispredict:                    3.7%
+Bad Speculation                        7.6%
+  Branch Mispredict                    4.2%
 
-Back-End Bound:                        20.4%
-  Memory Bound:                        13.7%
-    L1 Bound:                          11.1%
-    L2 Bound:                           0.8%
-    L3 Bound:                           2.2%
-    DRAM Bound:                         2.7%
-    Store Bound:                        0.2%
-  Core Bound:                           6.7%
-    Divider:                            0.3%
-    Serializing Operations:            10.0%
-    Port Utilization:                  20.3%
+Back-End Bound                        30.2%
+  Memory Bound                        19.7%
+    L1 Bound                          16.3%
+    L2 Bound                           0.0%
+    L3 Bound                           1.7%
+    DRAM Bound                        12.2%
+    Store Bound                        1.5%
+  Core Bound                          10.5%
+    Divider                            0.2%
+    Serializing Operations             5.6%
+    Port Utilization                  20.4%
+
 ```
 
+### cp-sat
+
+```
+Elapsed Time                         60.00s
+Clockticks                  388,728,464,000
+Instructions Retired        967,614,384,000
+CPI Rate                               0.4%
+MUX Reliability                       97.9%
+
+Retiring                              50.0%
+
+Front-End Bound                       35.3%
+  Front-End Latency                   16.1%
+  Front-End Bandwidth                 19.3%
+
+Bad Speculation                        2.5%
+  Branch Mispredict                    3.0%
+
+Back-End Bound                        12.2%
+  Memory Bound                         7.0%
+    L1 Bound                          14.8%
+    L2 Bound                           0.8%
+    L3 Bound                           1.1%
+    DRAM Bound                         3.9%
+    Store Bound                        0.5%
+  Core Bound                           5.2%
+    Divider                            0.5%
+    Serializing Operations             4.8%
+    Port Utilization                  29.5%
+
+```

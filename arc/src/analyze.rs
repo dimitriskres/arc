@@ -1,5 +1,5 @@
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct SolveReport
 {
     pub signal: crate::coerce::signal::Signal,
@@ -31,7 +31,7 @@ where
     return report;
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct GaugeReport
 {
     pub nexts: usize,
@@ -41,10 +41,12 @@ pub struct GaugeReport
     pub selects: usize,
     pub coerces: usize,
     pub reverts: usize,
-    pub duration: std::time::Duration
+    pub signal: crate::coerce::signal::Signal,
+    pub duration: std::time::Duration,
+    pub validation: Option<String>
 }
 
-pub fn gauge<Model, Audit, Field, Queue, Cache, Probe>(model: Model, timeout: std::time::Duration) -> Option<GaugeReport>
+pub fn gauge<Model, Audit, Field, Queue, Cache, Probe>(model: Model, timeout: std::time::Duration, validate: Option<fn(Model, & Field) -> String>) -> Option<GaugeReport>
 where
     Model: crate::model::ModelLike + Copy,
     Audit: crate::assert::audit::AuditLike<Model, Field> + crate::coerce::revert::Revertible,
@@ -68,55 +70,67 @@ where
     
     let instant = std::time::Instant::now();
 
-    while let Ok(action) = unsafe { solution.step() }
+    let signal = loop
     {
-        match action
+        match unsafe { solution.step() }
         {
-            crate::coerce::action::Action::Assert { action } =>
+            Ok(action) => 
             {
                 match action
                 {
-                    crate::assert::action::Action::Next =>
+                    crate::coerce::action::Action::Assert { action } =>
                     {
-                        nexts += 1;
+                        match action
+                        {
+                            crate::assert::action::Action::Next =>
+                            {
+                                nexts += 1;
+                            },
+                            crate::assert::action::Action::Locate =>
+                            {
+                                locates += 1;
+                            },
+                            crate::assert::action::Action::Settle =>
+                            {
+                                settles += 1;
+                            },
+                            crate::assert::action::Action::Negate =>
+                            {
+                                negates += 1;
+                            }
+                        };
                     },
-                    crate::assert::action::Action::Locate =>
+                    crate::coerce::action::Action::Select =>
                     {
-                        locates += 1;
+                        selects += 1;
                     },
-                    crate::assert::action::Action::Settle =>
+                    crate::coerce::action::Action::Coerce =>
                     {
-                        settles += 1;
+                        if instant.elapsed() > timeout
+                        {
+                            return None;
+                        };
+
+                        coerces += 1;
                     },
-                    crate::assert::action::Action::Negate =>
+                    crate::coerce::action::Action::Revert =>
                     {
-                        negates += 1;
+                        reverts += 1;
                     }
                 };
             },
-            crate::coerce::action::Action::Select =>
+            Err(signal) =>
             {
-                selects += 1;
-            },
-            crate::coerce::action::Action::Coerce =>
-            {
-                if instant.elapsed() > timeout
-                {
-                    return None;
-                };
-
-                coerces += 1;
-            },
-            crate::coerce::action::Action::Revert =>
-            {
-                reverts += 1;
+                break signal;
             }
-        };
+        }
     };
 
     let duration = instant.elapsed();
 
-    let report = GaugeReport { nexts, locates, settles, negates, selects, coerces, reverts, duration };
+    let validation = validate.and_then(|validate| validate(model, solver.inner().field()).into());
+
+    let report = GaugeReport { nexts, locates, settles, negates, selects, coerces, reverts, signal, duration, validation };
 
     return Some(report);
 }
@@ -130,7 +144,7 @@ pub struct BenchReport
     pub durations: Box<[std::time::Duration]>
 }
 
-pub fn bench<Model, Audit, Field, Queue, Cache, Probe>(model: Model, minimum: usize, prepare: std::time::Duration, mut timeout: std::time::Duration) -> BenchReport
+pub fn bench<Model, Audit, Field, Queue, Cache, Probe>(model: Model, minimum: usize, prepare: std::time::Duration, mut timeout: std::time::Duration, validate: Option<fn(Model, & Field) -> String>) -> BenchReport
 where
     Model: crate::model::ModelLike + Copy,
     Audit: crate::assert::audit::AuditLike<Model, Field> + crate::coerce::revert::Revertible,
@@ -146,7 +160,14 @@ where
 
     let mut durations = Vec::new();
 
-    let sample = gauge(model, PERPETUAL).unwrap();
+    let sample = gauge(model, PERPETUAL, validate).unwrap();
+
+    println!("{:?}", sample);
+
+    if matches!(sample.signal, crate::coerce::signal::Signal::Revert)
+    {
+        panic!("bench: sample failed");
+    };
 
     loop
     {
@@ -164,7 +185,7 @@ where
 
         durations.push(report.duration);
 
-        print!("{:0.0?} ", report.duration);
+        print!("{:0.2?} ", report.duration);
 
         std::io::Write::flush(& mut std::io::stdout()).unwrap();
     };

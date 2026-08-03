@@ -13,7 +13,7 @@
 /doc/
 
 # Benchmark/profiling outputs
-**/benchmarks/
+**/vtune/
 **/criterion/
 **/flamegraph.svg
 **/perf.data
@@ -40,3 +40,6 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+code.sh
+code.txt

@@ -1,62 +1,37 @@
+pub mod model;
 pub mod method;
 pub mod utility;
 
-#[cfg(test)]
-mod test
+pub fn validate<Model, Field>(model: Model, field: & Field) -> String
+where 
+	Model: crate::model::ModelLike,
+	Field: arc::assert::field::FieldLike<Model>
 {
-    type Audit<Model> = crate::method::binary::audit::Audit<Model>;
+	for node in model.nodes()
+	{
+		let mut units = field.iter(node);
 
-    type Field<Model> = arc::assert::field::FieldV5<Model, bitset::flat::BitSet>;
+		let Some(origin_unit) = units.next() else
+		{
+			return format!("node {:?} has no unit", node);
+		};
 
-    type Queue<Model> = arc::assert::queue::QueueV2<Model>;
-
-    type Cache<Model> = arc::assert::cache::CacheV2<Model>;
-
-    type Probe<Model> = arc::coerce::probe::ProbeV3<Model>;
-
-    #[test]
-    fn main() 
-    {
-        let seed = 0;
-
-        let rng = & mut <rand::rngs::Xoshiro256PlusPlus as rand::SeedableRng>::seed_from_u64(seed);
-
-        let instant = std::time::Instant::now();
-
-        let timeout = std::time::Duration::from_secs(3);
-
-        let skip = [];
-
-        for size in 500..=1000
+		if units.next().is_some()
         {
-            if skip.contains(& size)
-            {
-                println!("{} -> skip", size);
-
-                continue;
-            };
-
-            let edges = crate::utility::get_edges(rng, size, 0.5);
-
-            for unit_count in (size / 9)..(size / 4)
-            {
-                let unit_count = unit_count + 4;
-
-                let model = & crate::method::binary::model::ScalarModel::new(edges.clone(), unit_count);
-
-                let Some(package) = arc::analyze::gauge::<_, Audit<_>, Field<_>, Queue<_>, Cache<_>, Probe<_>>(model, timeout) else
-                {
-                    println!("{} @ {} -> timeout", size, unit_count);
-
-                    continue;
-                };
-
-                let ratio = (package.settles + package.negates) as f64 / package.reverts as f64;
-
-                println!("{} @ {} -> {:?} -> {:.0}", size, unit_count, package, ratio);
-            };
+            return format!("node {:?} has more than one unit", node);
         };
 
-        println!("total elapsed: {:?}", instant.elapsed());
-    }
+		for edge in model.edges(node).iter().copied()
+		{
+			for target_unit in field.iter(edge)
+			{
+				if origin_unit == target_unit
+				{
+					return format!("node {:?} has unit {:?} equal in {:?}", node, origin_unit, edge);
+				};
+			};
+		};
+	};
+
+	return format!("ok");
 }

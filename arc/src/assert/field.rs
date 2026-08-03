@@ -9,6 +9,8 @@ where
 
     fn insert(& mut self, atom: Model::Atom);
 
+    const ORDERED: bool;
+
     fn iter(& self, node: Model::Node) -> impl Iterator<Item = Model::Unit>;
 }
 
@@ -60,6 +62,8 @@ where
     {
         self.store.insert(atom);
     }
+
+    const ORDERED: bool = true;
 
     fn iter(& self, node: Model::Node) -> impl Iterator<Item = Model::Unit>
     {
@@ -145,6 +149,8 @@ where
         units.insert(unit);
     }
 
+    const ORDERED: bool = false;
+
     fn iter(& self, node: Model::Node) -> impl Iterator<Item = Model::Unit>
     {
         let units = self.store.get(& node).unwrap();
@@ -208,6 +214,8 @@ where
 
         units.insert(unit);
     }
+
+    const ORDERED: bool = false;
 
     fn iter(& self, node: Model::Node) -> impl Iterator<Item = Model::Unit>
     {
@@ -277,6 +285,8 @@ where
             units.push(unit);
         };
     }
+
+    const ORDERED: bool = false;
 
     fn iter(& self, node: Model::Node) -> impl Iterator<Item = Model::Unit>
     {
@@ -353,6 +363,8 @@ where
 
         self.store.insert(atom_index);
     }
+
+    const ORDERED: bool = true;
 
     fn iter(& self, node: Model::Node) -> impl Iterator<Item = Model::Unit>
     {

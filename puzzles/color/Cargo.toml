@@ -7,3 +7,23 @@ edition = "2024"
 arc = { workspace = true }
 bitset = { workspace = true }
 rand = "0.10.1"
+rustc-hash = "2.1.2"
+csv = "1.4.0"
+paste = { version = "1.0.15" }
+clap = { version = "4.6.1", features = ["derive"] }
+
+[[bin]]
+name = "color-ratio"
+path = "bin/ratio.rs"
+
+[[bin]]
+name = "color-bench"
+path = "bin/bench.rs"
+
+[[bin]]
+name = "color-solve"
+path = "bin/solve.rs"
+
+[[bin]]
+name = "color-stage"
+path = "bin/stage.rs"

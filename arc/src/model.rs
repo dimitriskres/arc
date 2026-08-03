@@ -26,13 +26,9 @@ pub trait ModelLike
 
     fn units(& self, node: Self::Node) -> impl Iterator<Item = Self::Unit>;
 
-    fn atom_count(& self) -> usize;
-
     fn atom_scope(& self, atom: Self::Atom) -> impl Iterator<Item = Self::Fact>;
 
     fn atom_scope_size(& self, atom: Self::Atom) -> usize;
-
-    fn atoms(& self) -> impl Iterator<Item = Self::Atom>;
 
     fn encode_atom(& self, node: Self::Node, unit: Self::Unit) -> Self::Atom;
 
@@ -42,11 +38,15 @@ pub trait ModelLike
 
     fn decode_atom(& self, atom: Self::Atom) -> (Self::Node, Self::Unit);
 
-    fn fact_count(& self) -> usize;
+    fn atom_count(& self) -> usize;
+
+    fn atoms(& self) -> impl Iterator<Item = Self::Atom>;
 
     fn fact_scope(& self, fact: Self::Fact) -> impl Iterator<Item = Self::Atom>;
 
     fn fact_scope_size(& self, fact: Self::Fact) -> usize;
+
+    fn fact_count(& self) -> usize;
 
     fn facts(& self) -> impl Iterator<Item = Self::Fact>;
 }

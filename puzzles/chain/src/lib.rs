@@ -1,25 +1,37 @@
+pub mod model;
 pub mod method;
 
-#[cfg(test)]
-mod test
+pub fn validate<Model, Field>(model: Model, field: & Field) -> String
+where 
+    Model: crate::model::ModelLike,
+    Field: arc::assert::field::FieldLike<Model>
 {
-    #[test]
-    fn main()
+    let mut prev = None;
+    
+    for node in model.nodes()
     {
-        type Audit<Model> = crate::method::binary::audit::Audit<Model>;
+        let mut units = field.iter(node);
 
-        type Field<Model> = arc::assert::field::FieldV1<Model, std::hash::RandomState>;
+        let Some(unit) = units.next() else
+        {
+            return format!("node {:?} has no unit", node);
+        };
 
-        type Queue<Model> = arc::assert::queue::QueueV1<Model>;
+        if units.next().is_some()
+        {
+            return format!("node {:?} has more than one unit", node);
+        };
 
-        type Cache<Model> = arc::assert::cache::CacheV1<Model, std::hash::RandomState>;
+        if let Some(prev) = prev
+        {
+            if !(prev < unit)
+            {
+                return format!("node {:?} has unit {:?} !< {:?}", node, unit, prev);
+            };
+        };
 
-        type Probe<Model> = arc::coerce::probe::ProbeV3<Model>;
+        prev = Some(unit);
+    };
 
-        let model = & crate::method::binary::model::ScalarModel::new(600, 600);
-
-        let report = arc::analyze::solve::<_, Audit<_>, Field<_>, Queue<_>, Cache<_>, Probe<_>>(model);
-
-        println!("{:?}", report);
-    }
+    return format!("ok");
 }

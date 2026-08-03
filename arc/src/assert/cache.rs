@@ -63,7 +63,9 @@ where
 
         for atom in atoms.iter().copied()
         {
-            self.edge_store.entry(atom).or_default().push(fact);
+            let edges = self.edge_store.entry(atom).or_default();
+
+            edges.push(fact);
         };
     }
 
@@ -152,7 +154,9 @@ where
         {
             let atom_index = atom as usize;
 
-            self.edge_store[atom_index].push(fact);
+            let edges = & mut self.edge_store[atom_index];
+
+            edges.push(fact);
         };
     }
 
@@ -248,7 +252,9 @@ where
         {
             let atom_index = atom as usize;
 
-            self.edge_store[atom_index].push(fact);
+            let edges = & mut self.edge_store[atom_index];
+
+            edges.push(fact);
         };
     }
 
@@ -348,8 +354,10 @@ where
         for atom in atoms.iter().copied()
         {
             let atom_index = atom as usize;
-            
-            self.edge_store[atom_index].push(fact);
+
+            let edges = & mut self.edge_store[atom_index];
+
+            edges.push(fact);
         };
     }
 

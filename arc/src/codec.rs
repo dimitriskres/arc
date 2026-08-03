@@ -73,13 +73,13 @@ impl<X, Y> CodecLike for ObjectCodec<X, Y>
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct UniformCodec
+pub struct ScalarCodec
 {
     c: Scalar,
     d: fastdiv::PrecomputedDivU32
 }
 
-impl UniformCodec
+impl ScalarCodec
 {
     pub fn new(c: Scalar) -> Self
     {
@@ -94,7 +94,7 @@ impl UniformCodec
     }
 }
 
-impl CodecLike for UniformCodec
+impl CodecLike for ScalarCodec
 {
     type X = Scalar;
     type Y = Scalar;

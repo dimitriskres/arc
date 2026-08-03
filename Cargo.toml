@@ -4,7 +4,7 @@ members = [
     "arc",
     "puzzles/chain",
     "puzzles/latin",
-    # "puzzles/color"
+    "puzzles/color"
 ]
 resolver = "2"
 
@@ -20,3 +20,12 @@ panic = "abort"
 debug = 0
 strip = "symbols"
 incremental = false
+
+[profile.vtune]
+inherits = "release"
+debug = 2
+strip = "none"
+incremental = false
+codegen-units = 1
+lto = "off"
+panic = "unwind"

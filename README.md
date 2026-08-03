@@ -234,3 +234,4 @@ All benchmarks use the [coerce solver](/arc/src/coerce/solver.rs) which is capab
 Available benchmarks:
 - [chain](/puzzles/chain)
 - [latin](/puzzles/latin)
+- [color](/puzzles/color)

@@ -14,7 +14,7 @@ macro_rules! resolve_field
     (F2R) => { arc::assert::field::FieldV2<_, std::collections::hash_map::RandomState> };
     (F2X) => { arc::assert::field::FieldV2<_, rustc_hash::FxBuildHasher> };
     (F3R) => { arc::assert::field::FieldV3<_, std::collections::hash_map::RandomState> };
-    (F3X) => { arc::assert::field::FieldV2<_, rustc_hash::FxBuildHasher> };
+    (F3X) => { arc::assert::field::FieldV3<_, rustc_hash::FxBuildHasher> };
     (F4) => { arc::assert::field::FieldV4<_> };
     (F5F) => { arc::assert::field::FieldV5<_, bitset::flat::BitSet> };
     (F5M) => { arc::assert::field::FieldV5<_, bitset::meta::BitSet> };
@@ -38,7 +38,7 @@ macro_rules! resolve_cache
     (C1R) => { arc::assert::cache::CacheV1<_, std::collections::hash_map::RandomState> };
     (C1X) => { arc::assert::cache::CacheV1<_, rustc_hash::FxBuildHasher> };
     (C2R) => { arc::assert::cache::CacheV2<_, std::collections::hash_map::RandomState> };
-    (C2X) => { arc::assert::cache::CacheV1<_, rustc_hash::FxBuildHasher> };
+    (C2X) => { arc::assert::cache::CacheV2<_, rustc_hash::FxBuildHasher> };
     (C3) => { arc::assert::cache::CacheV3<_> };
     (C4F) => { arc::assert::cache::CacheV4<_, bitset::flat::BitSet> };
     (C4M) => { arc::assert::cache::CacheV4<_, bitset::meta::BitSet> };
@@ -51,22 +51,21 @@ macro_rules! resolve_probe
 {
     (P1) => { arc::coerce::probe::ProbeV1<_> };
     (P2) => { arc::coerce::probe::ProbeV2<_> };
-    (P3) => { arc::coerce::probe::ProbeV3<_> };
 }
 
 #[macro_export]
 macro_rules! bench
 {
-    ($audit:path, $field:ident, $queue:ident, $cache:ident, $probe:ident, $model:expr, $minimum:expr, $prepare:expr, $timeout:expr) => 
+    ($audit:path, $field:ident, $queue:ident, $cache:ident, $probe:ident, $model:expr, $minimum:expr, $prepare:expr, $timeout:expr, $validate:expr) => 
     {
-        arc::analyze::bench::<_, $audit, arc::resolve_field!($field), arc::resolve_queue!($queue), arc::resolve_cache!($cache), arc::resolve_probe!($probe)>($model, $minimum, $prepare, $timeout)
+        arc::analyze::bench::<_, $audit, arc::resolve_field!($field), arc::resolve_queue!($queue), arc::resolve_cache!($cache), arc::resolve_probe!($probe)>($model, $minimum, $prepare, $timeout, $validate)
     };
 }
 
 #[macro_export]
 macro_rules! bench_cases
 {
-    ($name:expr, $audit:path, $handle:ident, $model:ident, $minimum:expr, $prepare:expr, $timeout:expr, $([$field:ident $queue:ident $cache:ident $probe:ident]),+ $(,)?) => 
+    ($name:expr, $audit:path, $handle:ident, $model:ident, $minimum:expr, $prepare:expr, $timeout:expr, $validate:expr, $([$field:ident $queue:ident $cache:ident $probe:ident]),+ $(,)?) => 
     {
         $(
             paste::paste!
@@ -80,7 +79,7 @@ macro_rules! bench_cases
 
                 println!("{:}", name);
 
-                let report = arc::bench!($audit, $field, $queue, $cache, $probe, $model, $minimum, $prepare, $timeout);
+                let report = arc::bench!($audit, $field, $queue, $cache, $probe, $model, $minimum, $prepare, $timeout, $validate);
 
                 $handle((& name, report));
             }
