@@ -19,7 +19,7 @@ A `tick` controls the scale of the puzzle. The chain size is `N = 100 * tick`. F
 Mean reported in milliseconds. Standard deviation reported in % of the mean. 
 
 The fastest module combination using:
-- `scalar` is `V1` `F4  Q3M C4F` with **35** mean.
+- `scalar` is `V0` `F4  Q3M C4F` with **35** mean.
 - `object` with non-secure hashing is `V0` `F3X Q1  C1X` with **54** mean.
 - `object` with secure hashing is `V0` `F3X Q1  C1R` with **79** mean.
 
