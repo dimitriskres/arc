@@ -18,11 +18,6 @@ A `tick` controls the scale of the puzzle. The square is size `N = 10 + tick * 2
 
 Mean reported in milliseconds. Standard deviation reported in % of the mean. 
 
-The fastest module combination using:
-- `scalar` is `V1` `F5F Q1  C5F` with **7** mean.
-- `object` with non-secure hashing is `V1` `F4  Q1  C1X` with **14** mean.
-- `object` with secure hashing is `V1` `F4  Q1  C1R` with **32** mean.
-
 ### Cross-Solver Benchmark
 
 Reference using `minizinc` with [model.mzn](zinc/model.mzn) from [solver-bench.csv](solver-bench.csv):
@@ -74,6 +69,11 @@ Reference using `minizinc` with [model.mzn](zinc/model.mzn) from [solver-bench.c
 | `1`    | `cp-sat`  | `-` |         0 |       0.0 |        86 |       1.7 |
 
 ### Cross-Module Kernel Benchmark
+
+The fastest module combination using:
+- `scalar` is `V1` `F5F Q1  C5F` with **7** mean.
+- `object` with non-secure hashing is `V1` `F4  Q1  C1X` with **14** mean.
+- `object` with secure hashing is `V1` `F4  Q1  C1R` with **32** mean.
 
 Reference from [kernel-bench.csv](kernel-bench.csv):
 
@@ -1081,10 +1081,6 @@ Reference from [kernel-bench.csv](kernel-bench.csv):
 | `scalar` | `F3R Q4M C1X` | `1` |   7197 |  219.7 |
 
 ### Microarchitecture Exploration
-
-Performed using VTune on a machine with:
-- 3.50 GHz i5-13600F CPU
-- 3600 MHz DDR4 Memory
 
 ### kernel-0
 

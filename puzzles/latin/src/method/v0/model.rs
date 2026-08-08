@@ -178,7 +178,7 @@ where
     #[allow(unused_variables)]
     fn atom_scope_size(& self, atom: Self::Atom) -> usize
     {
-        return self.fact_count();
+        return self.link_count as usize;
     }
 
     fn atoms(& self) -> impl Iterator<Item = Self::Atom>
