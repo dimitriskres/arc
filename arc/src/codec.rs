@@ -8,14 +8,6 @@ pub struct Object<X, Y>
     pub y: Y
 }
 
-impl<X, Y> crate::model::Tiny for Object<X, Y>
-where
-    X: crate::model::Tiny,
-    Y: crate::model::Tiny
-{
-
-}
-
 pub trait CodecLike
 {
     type X;

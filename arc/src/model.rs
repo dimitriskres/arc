@@ -6,7 +6,9 @@ where
 
 }
 
-impl Tiny for crate::codec::Scalar
+impl<T> Tiny for T
+where 
+    T: Sized + std::fmt::Debug + Clone + Copy + std::hash::Hash + PartialEq + Eq + PartialOrd + Ord + Send + Sync
 {
 
 }
