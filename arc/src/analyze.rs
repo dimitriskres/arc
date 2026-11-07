@@ -164,10 +164,9 @@ where
 
     println!("{:?}", sample);
 
-    if matches!(sample.signal, crate::coerce::signal::Signal::Revert)
-    {
-        panic!("bench: sample failed");
-    };
+    assert!(matches!(sample.signal, crate::coerce::signal::Signal::Finish), "bench gauge did not finish");
+
+    assert_eq!(sample.validation.as_deref(), Some("ok"), "bench guage failed validation");
 
     loop
     {
@@ -177,6 +176,8 @@ where
         };
 
         let report = solve(model);
+
+        assert!( matches!(report.signal, crate::coerce::signal::Signal::Finish), "bentch solve did not finish");
 
         if instant.elapsed() < prepare
         {

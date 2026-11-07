@@ -124,7 +124,7 @@ where
 
     fn facts(& self) -> impl Iterator<Item = Self::Fact>
     {
-        return self.nodes().flat_map(move |node| self.links(node).filter(move |& link| node < self.edges(node)[link as usize]).map(move |link| arc::codec::CodecLike::encode(& self.fact_codec, node, link)));
+        return self.nodes().flat_map(move |node| self.links(node).map(move |link| arc::codec::CodecLike::encode(& self.fact_codec, node, link)));
     }
 }
 

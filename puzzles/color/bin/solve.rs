@@ -76,6 +76,8 @@ fn main()
     };
 
     let total_duration = instant.elapsed().as_nanos().to_string();
+
+    assert!(matches!(report.signal, arc::coerce::signal::Signal::Finish), "solver did not finish");
     
     let solve_duration = report.duration.as_nanos().to_string();
 
